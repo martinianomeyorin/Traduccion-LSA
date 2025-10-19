@@ -1,0 +1,130 @@
+import pandas as pd
+import os
+
+def convertir_dataset_a_palabras():
+    """
+    Convierte un dataset existente con números a palabras del LSA
+    """
+    
+    # Mapeo de identificaciones a palabras del LSA
+    mapeo_lsa = {
+        "001": "Opaco", "002": "Rojo", "003": "Verde", "004": "Amarillo", "005": "Brillante",
+        "006": "Azul claro", "007": "Bandera", "008": "Rosa", "009": "Mujer", "010": "Enemigo",
+        "011": "Hijo", "012": "Hombre", "013": "Lejos", "014": "Cajón", "015": "Nacido",
+        "016": "Aprender", "017": "Llamar", "018": "Desnatadora", "019": "Amargo", "020": "Leche dulce",
+        "021": "Leche", "022": "Agua", "023": "Alimento", "024": "Argentina", "025": "Uruguay",
+        "026": "País", "027": "Apellido", "028": "Dónde", "029": "Imitar", "030": "Cumpleaños",
+        "031": "Desayuno", "032": "Foto", "033": "Hambriento", "034": "Mapa", "035": "Acuñar",
+        "036": "Música", "037": "Barco", "038": "Ninguno", "039": "Nombre", "040": "Paciencia",
+        "041": "Perfume", "042": "Sordo", "043": "Trampa", "044": "Arroz", "045": "Parilla",
+        "046": "Dulce", "047": "chicle", "048": "Espaguetis", "049": "Yogur", "050": "Aceptar",
+        "051": "Gracias", "052": "Cerrar", "053": "Aparecer", "054": "Aterrizar", "055": "Atrapar",
+        "056": "Ayuda", "057": "Bailar", "058": "Bañarse", "059": "Comprar", "060": "Copiar",
+        "061": "Correr", "062": "Darse cuenta", "063": "Dar", "064": "Encontrar"
+    }
+    
+    # Buscar archivos CSV existentes
+    archivos_csv = [f for f in os.listdir('.') if f.endswith('.csv') and 'dataset' in f.lower()]
+    
+    if not archivos_csv:
+        print("❌ No se encontraron archivos de dataset CSV")
+        return
+    
+    print("📁 Archivos CSV encontrados:")
+    for i, archivo in enumerate(archivos_csv):
+        size_mb = os.path.getsize(archivo) / (1024*1024)
+        print(f"   {i+1}. {archivo} ({size_mb:.1f} MB)")
+    
+    # Seleccionar archivo
+    if len(archivos_csv) == 1:
+        archivo_input = archivos_csv[0]
+        print(f"\n📄 Usando: {archivo_input}")
+    else:
+        try:
+            seleccion = int(input(f"\nSelecciona el archivo (1-{len(archivos_csv)}): ")) - 1
+            archivo_input = archivos_csv[seleccion]
+        except:
+            archivo_input = archivos_csv[0]
+            print(f"Usando el primero por defecto: {archivo_input}")
+    
+    # Cargar dataset
+    print(f"\n📖 Cargando dataset...")
+    try:
+        df = pd.read_csv(archivo_input)
+        print(f"✅ Dataset cargado: {len(df):,} filas, {len(df.columns)} columnas")
+    except Exception as e:
+        print(f"❌ Error al cargar: {e}")
+        return
+    
+    # Verificar estructura
+    if 'label' not in df.columns:
+        print("❌ No se encontró columna 'label' en el dataset")
+        return
+    
+    print(f"\n🔍 Analizando etiquetas actuales...")
+    etiquetas_unicas = df['label'].unique()
+    print(f"   Etiquetas únicas encontradas: {len(etiquetas_unicas)}")
+    print(f"   Primeras 10: {list(etiquetas_unicas[:10])}")
+    
+    # Convertir etiquetas
+    print(f"\n🔄 Convirtiendo números a palabras...")
+    
+    def convertir_etiqueta(etiqueta):
+        """Convierte una etiqueta numérica a palabra"""
+        # Si ya es una palabra, la mantiene
+        if isinstance(etiqueta, str) and not etiqueta.isdigit():
+            return etiqueta
+        
+        # Convierte número a string con formato 001, 002, etc.
+        numero_str = str(int(etiqueta)).zfill(3)
+        return mapeo_lsa.get(numero_str, f"Desconocida_{numero_str}")
+    
+    # Aplicar conversión
+    df_convertido = df.copy()
+    df_convertido['label'] = df_convertido['label'].apply(convertir_etiqueta)
+    
+    # Verificar conversión
+    palabras_unicas = df_convertido['label'].unique()
+    print(f"✅ Conversión completada!")
+    print(f"   Palabras únicas: {len(palabras_unicas)}")
+    
+    # Mostrar mapeo realizado
+    print(f"\n📋 Mapeo realizado:")
+    mapeo_realizado = {}
+    for etiqueta_original in etiquetas_unicas:
+        palabra_nueva = convertir_etiqueta(etiqueta_original)
+        mapeo_realizado[etiqueta_original] = palabra_nueva
+    
+    for original, nueva in sorted(mapeo_realizado.items())[:10]:
+        print(f"   {original} → {nueva}")
+    
+    if len(mapeo_realizado) > 10:
+        print(f"   ... y {len(mapeo_realizado) - 10} más")
+    
+    # Guardar nuevo dataset
+    archivo_output = archivo_input.replace('.csv', '_con_palabras.csv')
+    print(f"\n💾 Guardando dataset convertido...")
+    df_convertido.to_csv(archivo_output, index=False)
+    
+    print(f"✅ ¡Conversión completada exitosamente!")
+    print(f"   📄 Archivo original: {archivo_input}")
+    print(f"   📄 Archivo nuevo: {archivo_output}")
+    print(f"   📊 Muestras: {len(df_convertido):,}")
+    
+    # Estadísticas finales
+    print(f"\n📈 Distribución por palabra (top 10):")
+    distribucion = df_convertido['label'].value_counts().sort_values(ascending=False)
+    for palabra, count in distribucion.head(10).items():
+        print(f"   {palabra}: {count:,} muestras")
+    
+    print(f"\n🎯 ¡Tu dataset está listo para entrenar con nombres de palabras reales!")
+    
+    return archivo_output
+
+if __name__ == "__main__":
+    print("🔄 CONVERTIDOR DE DATASET LSA")
+    print("=" * 40)
+    print("Este script convierte las etiquetas numéricas a palabras LSA")
+    print()
+    
+    convertir_dataset_a_palabras()

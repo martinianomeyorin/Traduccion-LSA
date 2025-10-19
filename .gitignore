@@ -1,0 +1,17 @@
+# Archivo de variables de entorno (contiene secretos)
+.env
+
+# Modelos de Machine Learning y datos pesados
+*.h5
+*.pkl
+#Carpeta con los videos de entrenamiento
+LSA/
+# Carpetas y archivos de caché de Python
+venv/
+__pycache__/
+.idea/
+.vscode/
+
+# Cualquier otro archivo donde hayas anotado claves o notas
+*.txt
+*.CSV
