@@ -5,7 +5,7 @@ import pickle
 
 def entrenar_modelo():
     print("Cargando dataset...")
-    df = pd.read_csv("dataset_manos_lsa_con_palabras.csv")
+    df = pd.read_csv("C:\ingenieria Informatica\Quinto año\Proyecto LSA\dataset_manos_lsa_con_palabras.csv")
     print("Dataset cargado correctamente.")
     X = df.drop("label", axis=1).values
     y = df["label"].values

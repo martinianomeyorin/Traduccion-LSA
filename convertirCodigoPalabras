@@ -11,7 +11,7 @@ def convertir_dataset_a_palabras():
         "001": "Opaco", "002": "Rojo", "003": "Verde", "004": "Amarillo", "005": "Brillante",
         "006": "Azul claro", "007": "Bandera", "008": "Rosa", "009": "Mujer", "010": "Enemigo",
         "011": "Hijo", "012": "Hombre", "013": "Lejos", "014": "Cajón", "015": "Nacido",
-        "016": "Aprender", "017": "Llamar", "018": "Desnatadora", "019": "Amargo", "020": "Leche dulce",
+        "016": "Aprender", "017": "Llamar", "018": "Desnatadora", "019": "Amargo", "020": "Dulce de leche",
         "021": "Leche", "022": "Agua", "023": "Alimento", "024": "Argentina", "025": "Uruguay",
         "026": "País", "027": "Apellido", "028": "Dónde", "029": "Imitar", "030": "Cumpleaños",
         "031": "Desayuno", "032": "Foto", "033": "Hambriento", "034": "Mapa", "035": "Acuñar",
