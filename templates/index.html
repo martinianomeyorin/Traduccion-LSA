@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traductor LSA - Backend Python</title>
+    <style>
+        /* (MISMOS ESTILOS QUE TU DISEÑO ORIGINAL, NO HACE FALTA CAMBIAR MUCHO) */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex; justify-content: center; align-items: center; padding: 20px;
+        }
+        .container {
+            background: white; border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 30px; max-width: 1000px; width: 100%;
+        }
+        h1 { text-align: center; color: #667eea; margin-bottom: 20px; }
+        
+        /* Video Container ahora aloja la imagen del stream de Flask */
+        .video-container {
+            position: relative; background: #000;
+            border-radius: 15px; overflow: hidden;
+            margin-bottom: 20px; aspect-ratio: 16/9;
+            display: flex; justify-content: center; background: #000;
+        }
+        img#video-stream {
+            width: 100%; height: 100%; object-fit: contain;
+            /* transform: scaleX(-1);  <-- Python ya lo puede espejar si quieres */
+        }
+
+        /* Resto de estilos UI */
+        .controls { display: flex; gap: 10px; margin-bottom: 20px; justify-content: center;}
+        button {
+            padding: 12px 24px; border: none; border-radius: 10px;
+            font-weight: bold; cursor: pointer; transition: 0.2s;
+            color: white;
+        }
+        .btn-blue { background: #667eea; }
+        .btn-green { background: #10b981; }
+        .btn-red { background: #ef4444; }
+        button:hover { opacity: 0.9; transform: translateY(-2px); }
+
+        .output-box {
+            background: #f3f4f6; padding: 15px; border-radius: 10px;
+            margin-bottom: 15px; min-height: 60px; font-size: 1.2em;
+        }
+        .ia-box {
+            background: #d1fae5; border: 2px solid #10b981; color: #065f46;
+        }
+        .stats {
+            display: flex; justify-content: space-around;
+            font-size: 0.9em; color: #6b7280; margin-bottom: 10px;
+        }
+        .tag { background: #e5e7eb; padding: 2px 8px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>🤟 Traductor LSA (Tiempo Real)</h1>
+
+        <div class="video-container">
+            <img id="video-stream" src="{{ url_for('video_feed') }}" alt="Cargando cámara...">
+        </div>
+
+        <div class="stats">
+            <span>👐 Manos: <b id="manos">0</b></span>
+            <span>🎯 Confianza: <b id="confianza">0%</b></span>
+            <span>📝 Última seña: <b id="ultima" class="tag">-</b></span>
+        </div>
+
+        <div class="controls">
+            <button class="btn-blue" onclick="accion('espacio')">Espacio</button>
+            <button class="btn-green" onclick="accion('mejorar')">✨ Mejorar con IA</button>
+            <button class="btn-red" onclick="accion('borrar')">🗑️ Limpiar</button>
+        </div>
+
+        <div>
+            <p>Oración detectada:</p>
+            <div class="output-box" id="raw-text">...</div>
+            
+            <p>Traducción IA:</p>
+            <div class="output-box ia-box" id="ia-text">Esperando petición...</div>
+        </div>
+    </div>
+
+    <script>
+        // Actualizar datos cada 500ms
+        setInterval(async () => {
+            try {
+                const res = await fetch('/get_data');
+                const data = await res.json();
+
+                // Actualizar interfaz
+                document.getElementById('manos').innerText = data.manos;
+                document.getElementById('confianza').innerText = data.confianza + '%';
+                document.getElementById('ultima').innerText = data.ultima_signo;
+                document.getElementById('raw-text').innerText = data.oracion_raw || "...";
+                
+                // Manejar estado de IA
+                const iaBox = document.getElementById('ia-text');
+                if (data.estado_ia === 'cargando') {
+                    iaBox.innerText = "⏳ Consultando a ChatGPT...";
+                } else if (data.estado_ia === 'listo') {
+                    iaBox.innerText = data.oracion_mejorada;
+                } else {
+                    iaBox.innerText = "Esperando petición...";
+                }
+
+            } catch (e) {
+                console.error("Error conectando con backend", e);
+            }
+        }, 500);
+
+        // Enviar acciones al backend
+        async function accion(tipo) {
+            await fetch('/accion', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ tipo: tipo })
+            });
+        }
+    </script>
+</body>
+</html>
