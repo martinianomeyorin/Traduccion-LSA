@@ -3,7 +3,8 @@ import os
 
 def convertir_dataset_a_palabras():
     """
-    Convierte un dataset existente con números a palabras del LSA
+    Convierte un dataset existente con números a palabras del LSA.
+    Compatible con datasets de 1 mano (63 features) y 2 manos (128 features).
     """
     
     # Mapeo de identificaciones a palabras del LSA
@@ -61,23 +62,65 @@ def convertir_dataset_a_palabras():
         print("❌ No se encontró columna 'label' en el dataset")
         return
     
+    # Detectar tipo de dataset
+    num_columnas = len(df.columns)
+    if 'has_left' in df.columns and 'has_right' in df.columns:
+        tipo_dataset = "2 manos (128 features + 2 flags + label)"
+        num_features = 128
+        print(f"✓ Dataset de 2 MANOS detectado")
+    elif num_columnas == 64:  # 63 features + 1 label
+        tipo_dataset = "1 mano (63 features + label)"
+        num_features = 63
+        print(f"✓ Dataset de 1 MANO detectado")
+    else:
+        tipo_dataset = f"Desconocido ({num_columnas} columnas)"
+        num_features = num_columnas - 1
+        print(f"⚠️ Tipo de dataset: {tipo_dataset}")
+    
+    print(f"   Tipo: {tipo_dataset}")
+    print(f"   Total columnas: {num_columnas}")
+    
     print(f"\n🔍 Analizando etiquetas actuales...")
     etiquetas_unicas = df['label'].unique()
     print(f"   Etiquetas únicas encontradas: {len(etiquetas_unicas)}")
     print(f"   Primeras 10: {list(etiquetas_unicas[:10])}")
+    
+    # Verificar si ya están convertidas
+    ya_convertido = False
+    for etiqueta in etiquetas_unicas[:5]:
+        if isinstance(etiqueta, str) and not etiqueta.isdigit() and etiqueta in mapeo_lsa.values():
+            ya_convertido = True
+            break
+    
+    if ya_convertido:
+        print("\n⚠️ ADVERTENCIA: Las etiquetas parecen ya estar convertidas a palabras")
+        continuar = input("¿Deseas continuar de todas formas? (s/n): ")
+        if continuar.lower() != 's':
+            print("Operación cancelada")
+            return
     
     # Convertir etiquetas
     print(f"\n🔄 Convirtiendo números a palabras...")
     
     def convertir_etiqueta(etiqueta):
         """Convierte una etiqueta numérica a palabra"""
-        # Si ya es una palabra, la mantiene
+        # Si ya es una palabra conocida, la mantiene
         if isinstance(etiqueta, str) and not etiqueta.isdigit():
+            # Si ya está en el mapeo, la devuelve
+            if etiqueta in mapeo_lsa.values():
+                return etiqueta
+            # Si no está, intenta buscarla como si fuera número
+            if etiqueta in mapeo_lsa:
+                return mapeo_lsa[etiqueta]
+            # Si no, la mantiene como está
             return etiqueta
         
         # Convierte número a string con formato 001, 002, etc.
-        numero_str = str(int(etiqueta)).zfill(3)
-        return mapeo_lsa.get(numero_str, f"Desconocida_{numero_str}")
+        try:
+            numero_str = str(int(float(etiqueta))).zfill(3)
+            return mapeo_lsa.get(numero_str, f"Desconocida_{numero_str}")
+        except:
+            return str(etiqueta)
     
     # Aplicar conversión
     df_convertido = df.copy()
@@ -88,21 +131,40 @@ def convertir_dataset_a_palabras():
     print(f"✅ Conversión completada!")
     print(f"   Palabras únicas: {len(palabras_unicas)}")
     
+    # Contar palabras desconocidas
+    desconocidas = [p for p in palabras_unicas if 'Desconocida_' in str(p)]
+    if desconocidas:
+        print(f"   ⚠️ Etiquetas no encontradas en mapeo: {len(desconocidas)}")
+        print(f"      Ejemplo: {desconocidas[:3]}")
+    
     # Mostrar mapeo realizado
-    print(f"\n📋 Mapeo realizado:")
+    print(f"\n📋 Mapeo realizado (primeras 15):")
     mapeo_realizado = {}
     for etiqueta_original in etiquetas_unicas:
         palabra_nueva = convertir_etiqueta(etiqueta_original)
-        mapeo_realizado[etiqueta_original] = palabra_nueva
+        if etiqueta_original != palabra_nueva:
+            mapeo_realizado[etiqueta_original] = palabra_nueva
     
-    for original, nueva in sorted(mapeo_realizado.items())[:10]:
-        print(f"   {original} → {nueva}")
+    count = 0
+    for original, nueva in sorted(mapeo_realizado.items()):
+        if count < 15:
+            print(f"   {original} → {nueva}")
+            count += 1
+        else:
+            break
     
-    if len(mapeo_realizado) > 10:
-        print(f"   ... y {len(mapeo_realizado) - 10} más")
+    if len(mapeo_realizado) > 15:
+        print(f"   ... y {len(mapeo_realizado) - 15} más")
     
     # Guardar nuevo dataset
     archivo_output = archivo_input.replace('.csv', '_con_palabras.csv')
+    
+    # Si ya existe el archivo, agregar un número
+    contador = 1
+    while os.path.exists(archivo_output):
+        archivo_output = archivo_input.replace('.csv', f'_con_palabras_{contador}.csv')
+        contador += 1
+    
     print(f"\n💾 Guardando dataset convertido...")
     df_convertido.to_csv(archivo_output, index=False)
     
@@ -110,12 +172,30 @@ def convertir_dataset_a_palabras():
     print(f"   📄 Archivo original: {archivo_input}")
     print(f"   📄 Archivo nuevo: {archivo_output}")
     print(f"   📊 Muestras: {len(df_convertido):,}")
+    print(f"   📊 Features: {num_features}")
     
     # Estadísticas finales
-    print(f"\n📈 Distribución por palabra (top 10):")
+    print(f"\n📈 Distribución por palabra (top 15):")
     distribucion = df_convertido['label'].value_counts().sort_values(ascending=False)
-    for palabra, count in distribucion.head(10).items():
-        print(f"   {palabra}: {count:,} muestras")
+    for palabra, count in distribucion.head(15).items():
+        porcentaje = (count / len(df_convertido)) * 100
+        print(f"   {palabra}: {count:,} muestras ({porcentaje:.1f}%)")
+    
+    # Verificar balance del dataset
+    min_samples = distribucion.min()
+    max_samples = distribucion.max()
+    ratio = max_samples / min_samples if min_samples > 0 else 0
+    
+    print(f"\n⚖️ Balance del dataset:")
+    print(f"   Clase con más muestras: {max_samples:,}")
+    print(f"   Clase con menos muestras: {min_samples:,}")
+    print(f"   Ratio desbalance: {ratio:.2f}x")
+    
+    if ratio > 3:
+        print(f"   ⚠️ Dataset desbalanceado (ratio > 3x)")
+        print(f"   Considera usar data augmentation o class weights al entrenar")
+    else:
+        print(f"   ✓ Dataset relativamente balanceado")
     
     print(f"\n🎯 ¡Tu dataset está listo para entrenar con nombres de palabras reales!")
     
@@ -123,8 +203,16 @@ def convertir_dataset_a_palabras():
 
 if __name__ == "__main__":
     print("🔄 CONVERTIDOR DE DATASET LSA")
-    print("=" * 40)
+    print("=" * 60)
     print("Este script convierte las etiquetas numéricas a palabras LSA")
+    print("Compatible con datasets de 1 y 2 manos")
+    print("=" * 60)
     print()
     
-    convertir_dataset_a_palabras()
+    resultado = convertir_dataset_a_palabras()
+    
+    if resultado:
+        print(f"\n✅ Proceso completado exitosamente")
+        print(f"   Usa el archivo generado para entrenar tu modelo")
+    else:
+        print(f"\n❌ El proceso no se completó correctamente")

@@ -5,30 +5,23 @@ import tensorflow as tf
 import pickle
 import time
 import requests
-import os # Asegúrate de importar la librería os al principio de tu script
-import requests
+import os
 import json
 from dotenv import load_dotenv
 
 load_dotenv()
+
 # ============= CONFIGURACIÓN DE LA API DE OPENAI =============
-
-# Carga la clave desde una variable de entorno para mayor seguridad
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") 
-
-# El endpoint correcto de la API de chat
 OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
 
-# Verificación para asegurarnos de que la clave se cargó
 if not OPENAI_API_KEY:
     print("❌ Error: No se encontró la variable de entorno OPENAI_API_KEY.")
     print("Por favor, configúrala antes de ejecutar el script.")
-    exit() # Detiene el script si no hay clave
+    exit()
 
 def mejorar_oracion_con_chatgpt(oracion_primitiva):
-    """
-    Envía la oración a ChatGPT para mejorarla con coherencia gramatical
-    """
+    """Envía la oración a ChatGPT para mejorarla con coherencia gramatical"""
     if not oracion_primitiva.strip():
         return oracion_primitiva
     
@@ -47,7 +40,7 @@ Oración mejorada:"""
     }
     
     data = {
-        "model": "gpt-4o-mini",  # O "gpt-4" si tenés acceso
+        "model": "gpt-4o-mini",
         "messages": [
             {"role": "system", "content": "Sos un asistente que mejora oraciones en español argentino."},
             {"role": "user", "content": prompt}
@@ -63,7 +56,6 @@ Oración mejorada:"""
         if response.status_code == 200:
             resultado = response.json()
             oracion_mejorada = resultado['choices'][0]['message']['content'].strip()
-            # Limpiar respuesta (a veces ChatGPT agrega etiquetas)
             oracion_mejorada = oracion_mejorada.replace("Oración mejorada:", "").strip()
             print(f"✅ ChatGPT respondió: '{oracion_mejorada}'")
             return oracion_mejorada
@@ -78,38 +70,39 @@ Oración mejorada:"""
         print(f"❌ Error al conectar con ChatGPT: {e}")
         return oracion_primitiva
 
-# ============= CÓDIGO PRINCIPAL =============
+def extraer_landmarks_mano(hand_landmarks):
+    """Extrae los 63 valores (21 puntos × 3 coordenadas) de una mano"""
+    puntos = []
+    for landmark in hand_landmarks.landmark:
+        puntos.extend([landmark.x, landmark.y, landmark.z])
+    return puntos
 
+# ============= CÓDIGO PRINCIPAL =============
 def detectar_en_tiempo_real():
     print("Cargando modelo...")
     try:
-        model = tf.keras.models.load_model("modelo_gestos.h5")
-        print("Modelo cargado correctamente")
+        model = tf.keras.models.load_model("modelo_gestos_v2.h5")
+        print("✓ Modelo cargado correctamente")
         
         input_shape = model.input_shape[1]
-        print(f"El modelo espera {input_shape} características")
+        print(f"✓ El modelo espera {input_shape} características")
         
-        if input_shape == 63:
-            print("✓ Modelo de 1 MANO detectado")
-            modelo_tipo = "una_mano"
-        elif input_shape == 126:
-            print("✓ Modelo de 2 MANOS detectado")
-            modelo_tipo = "dos_manos"
-        else:
-            print(f"⚠ Tamaño inesperado: {input_shape}")
-            modelo_tipo = "una_mano" if input_shape < 100 else "dos_manos"
+        if input_shape != 128:
+            print(f"⚠️ ADVERTENCIA: Este código espera un modelo de 128 features (2 manos)")
+            print(f"   Pero el modelo cargado tiene {input_shape} features")
+            return
             
     except Exception as e:
-        print(f"Error al cargar el modelo: {e}")
+        print(f"❌ Error al cargar el modelo: {e}")
         return
 
     print("Cargando etiquetas...")
     try:
-        with open("labels.pkl", "rb") as f:
+        with open("labels_v2.pkl", "rb") as f:
             etiquetas = pickle.load(f)
-        print(f"Etiquetas cargadas: {len(etiquetas)} clases")
+        print(f"✓ Etiquetas cargadas: {len(etiquetas)} clases")
     except Exception as e:
-        print(f"Error al cargar etiquetas: {e}")
+        print(f"❌ Error al cargar etiquetas: {e}")
         return
 
     mp_hands = mp.solutions.hands
@@ -119,14 +112,14 @@ def detectar_en_tiempo_real():
         min_detection_confidence=0.7,
         min_tracking_confidence=0.5
     )
-    cap = cv2.VideoCapture(2)
-
+    
+    cap = cv2.VideoCapture(0)
     if not cap.isOpened():
-        print("No se pudo abrir la cámara")
+        print("❌ No se pudo abrir la cámara")
         return
 
     print("\n" + "="*60)
-    print("CÁMARA INICIADA - TRADUCTOR LSA CON IA")
+    print("CÁMARA INICIADA - TRADUCTOR LSA CON IA (2 MANOS)")
     print("="*60)
     print("Controles:")
     print("  - Q o ESC: Salir")
@@ -136,11 +129,11 @@ def detectar_en_tiempo_real():
     print("  - M: Mejorar oración con ChatGPT")
     print("="*60 + "\n")
     
-    window_name = "Traductor LSA con IA"
+    window_name = "Traductor LSA con IA (2 Manos)"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
     
     pantalla_completa = False
-    UMBRAL_CONFIANZA = 0.80
+    UMBRAL_CONFIANZA = 0.90
     
     oracion = []
     oracion_mejorada = ""
@@ -159,14 +152,14 @@ def detectar_en_tiempo_real():
         img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = hands.process(img_rgb)
 
-        palabra_actual = None
         mejor_prediccion = None
         mejor_probabilidad = 0
         mensaje_estado = ""
 
-        if results.multi_hand_landmarks:
+        if results.multi_hand_landmarks and results.multi_handedness:
             num_manos = len(results.multi_hand_landmarks)
             
+            # Dibujar landmarks
             for hand_landmarks in results.multi_hand_landmarks:
                 mp_drawing.draw_landmarks(
                     frame, 
@@ -176,63 +169,44 @@ def detectar_en_tiempo_real():
                     mp_drawing.DrawingSpec(color=(255, 0, 0), thickness=2)
                 )
             
-            if modelo_tipo == "una_mano":
-                for hand_landmarks in results.multi_hand_landmarks:
-                    fila = []
-                    for punto in hand_landmarks.landmark:
-                        fila.extend([punto.x, punto.y, punto.z])
-                    
-                    if len(fila) == 63:
-                        try:
-                            prediccion = model.predict(np.array([fila]), verbose=0)[0]
-                            prob = np.max(prediccion)
-                            
-                            if prob >= UMBRAL_CONFIANZA:
-                                if prob > mejor_probabilidad:
-                                    mejor_prediccion = etiquetas[np.argmax(prediccion)]
-                                    mejor_probabilidad = prob
-                        except Exception as e:
-                            print(f"Error al predecir: {e}")
-                
-                mensaje_estado = f"{num_manos} mano(s) detectada(s)"
+            # Preparar datos para predicción
+            mano_izquierda = [0.0] * 63
+            mano_derecha = [0.0] * 63
+            tiene_izquierda = 0
+            tiene_derecha = 0
             
-            elif modelo_tipo == "dos_manos":
-                if num_manos == 2:
-                    fila_combinada = []
-                    for hand_landmarks in results.multi_hand_landmarks:
-                        for punto in hand_landmarks.landmark:
-                            fila_combinada.extend([punto.x, punto.y, punto.z])
-                    
-                    if len(fila_combinada) == 126:
-                        try:
-                            prediccion = model.predict(np.array([fila_combinada]), verbose=0)[0]
-                            prob = np.max(prediccion)
-                            
-                            if prob >= UMBRAL_CONFIANZA:
-                                mejor_prediccion = etiquetas[np.argmax(prediccion)]
-                                mejor_probabilidad = prob
-                                mensaje_estado = "Seña bimanual - 2 manos"
-                        except Exception as e:
-                            print(f"Error: {e}")
+            # Clasificar cada mano detectada
+            for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
+                label = handedness.classification[0].label
+                landmarks = extraer_landmarks_mano(hand_landmarks)
                 
-                elif num_manos == 1:
-                    fila = []
-                    for punto in results.multi_hand_landmarks[0].landmark:
-                        fila.extend([punto.x, punto.y, punto.z])
-                    fila_combinada = fila + [0.0] * 63
-                    
-                    if len(fila_combinada) == 126:
-                        try:
-                            prediccion = model.predict(np.array([fila_combinada]), verbose=0)[0]
-                            prob = np.max(prediccion)
-                            
-                            if prob >= UMBRAL_CONFIANZA:
-                                mejor_prediccion = etiquetas[np.argmax(prediccion)]
-                                mejor_probabilidad = prob
-                                mensaje_estado = "1 mano detectada"
-                        except Exception as e:
-                            print(f"Error: {e}")
+                if label == "Right":
+                    mano_derecha = landmarks
+                    tiene_derecha = 1
+                else:  # "Left"
+                    mano_izquierda = landmarks
+                    tiene_izquierda = 1
             
+            # Crear vector de entrada: [63 izq] + [63 der] + [has_left, has_right]
+            fila_combinada = mano_izquierda + mano_derecha + [tiene_izquierda, tiene_derecha]
+            
+            if len(fila_combinada) == 128:
+                try:
+                    prediccion = model.predict(np.array([fila_combinada]), verbose=0)[0]
+                    prob = np.max(prediccion)
+                    
+                    if prob >= UMBRAL_CONFIANZA:
+                        mejor_prediccion = etiquetas[np.argmax(prediccion)]
+                        mejor_probabilidad = prob
+                        
+                        if num_manos == 2:
+                            mensaje_estado = "Seña bimanual - 2 manos detectadas"
+                        else:
+                            mensaje_estado = "1 mano detectada"
+                except Exception as e:
+                    print(f"Error al predecir: {e}")
+            
+            # Mostrar estado
             if mensaje_estado:
                 cv2.putText(frame, mensaje_estado, 
                           (10, frame.shape[0] - 230), 
@@ -241,11 +215,11 @@ def detectar_en_tiempo_real():
                           (255, 200, 0), 
                           2)
             
+            # Mostrar predicción
             if mejor_prediccion is not None:
-                palabra_actual = mejor_prediccion
                 porcentaje = mejor_probabilidad * 100
                 
-                cv2.putText(frame, f"Seña: {mejor_prediccion}", 
+                cv2.putText(frame, f"Sena: {mejor_prediccion}", 
                           (10, 30), 
                           cv2.FONT_HERSHEY_SIMPLEX, 
                           1.0, 
@@ -259,6 +233,7 @@ def detectar_en_tiempo_real():
                           (0, 255, 0), 
                           2)
                 
+                # Barra de confianza
                 barra_ancho = 300
                 barra_lleno = int((porcentaje / 100) * barra_ancho)
                 cv2.rectangle(frame, (10, 85), (10 + barra_ancho, 105), (100, 100, 100), 2)
@@ -266,6 +241,7 @@ def detectar_en_tiempo_real():
                 
                 tiempo_actual = time.time()
                 
+                # Contar estabilidad
                 if ultima_palabra != mejor_prediccion:
                     contador_misma_palabra = 1
                     ultima_palabra = mejor_prediccion
@@ -280,6 +256,7 @@ def detectar_en_tiempo_real():
                           (255, 255, 0), 
                           2)
                 
+                # Agregar palabra si es estable
                 if (contador_misma_palabra >= 10 and 
                     (tiempo_actual - tiempo_ultima_deteccion) > TIEMPO_ESPERA):
                     if oracion:
@@ -289,7 +266,7 @@ def detectar_en_tiempo_real():
                     print(f"   Oración primitiva: {''.join(oracion)}")
                     tiempo_ultima_deteccion = tiempo_actual
                     contador_misma_palabra = 0
-                    mostrar_mejorada = False  # Resetear cuando se agrega nueva palabra
+                    mostrar_mejorada = False
         else:
             contador_misma_palabra = 0
             ultima_palabra = None
@@ -300,26 +277,25 @@ def detectar_en_tiempo_real():
                       (0, 0, 255), 
                       2)
 
-        # Mostrar oración (primitiva o mejorada)
+        # Mostrar oración
         if mostrar_mejorada and oracion_mejorada:
             texto_a_mostrar = oracion_mejorada
-            color_texto = (100, 255, 100)  # Verde claro para indicar que es mejorada
+            color_texto = (100, 255, 100)
             etiqueta = "Oracion mejorada con IA:"
         else:
-            texto_a_mostrar = ''.join(oracion) if oracion else "[Esperando señas...]"
+            texto_a_mostrar = ''.join(oracion) if oracion else "[Esperando senas...]"
             color_texto = (255, 255, 255)
             etiqueta = "Oracion primitiva:"
         
         ancho_frame = frame.shape[1]
         caracteres_por_linea = int(ancho_frame / 12)
         
-        # Agregar etiqueta
         palabras_mostrar = [etiqueta] + texto_a_mostrar.split()
         lineas = []
         linea_actual = ""
         
         for i, palabra in enumerate(palabras_mostrar):
-            if i == 0:  # Primera palabra es la etiqueta
+            if i == 0:
                 linea_actual = palabra
             elif len(linea_actual + " " + palabra) <= caracteres_por_linea:
                 linea_actual += " " + palabra
@@ -360,7 +336,7 @@ def detectar_en_tiempo_real():
         
         if key == ord('q') or key == 27:
             break
-        elif key == ord('m'):  # Mejorar con ChatGPT
+        elif key == ord('m'):
             if oracion:
                 oracion_primitiva = ''.join(oracion).strip()
                 print("\n" + "="*60)
@@ -410,4 +386,5 @@ def detectar_en_tiempo_real():
     cv2.destroyAllWindows()
     print("\n✓ Aplicación cerrada")
 
-detectar_en_tiempo_real()
+if __name__ == "__main__":
+    detectar_en_tiempo_real()

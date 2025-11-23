@@ -3,6 +3,7 @@ import cv2
 import mediapipe as mp
 import pandas as pd
 from tqdm import tqdm
+import numpy as np
 
 # Configuración de MediaPipe
 mp_hands = mp.solutions.hands
@@ -15,9 +16,17 @@ hands = mp_hands.Hands(
 
 dataset = []
 
+def extraer_landmarks_mano(hand_landmarks):
+    """Extrae los 63 valores (21 puntos × 3 coordenadas) de una mano"""
+    puntos = []
+    for landmark in hand_landmarks.landmark:
+        puntos.extend([landmark.x, landmark.y, landmark.z])
+    return puntos
+
 def procesar_video(ruta_video, etiqueta):
     """
-    Procesa un video y extrae landmarks de las manos
+    Procesa un video y extrae landmarks de las manos.
+    Maneja casos de 1 o 2 manos correctamente.
     """
     cap = cv2.VideoCapture(ruta_video)
     if not cap.isOpened():
@@ -42,25 +51,45 @@ def procesar_video(ruta_video, etiqueta):
         results = hands.process(frame_rgb)
         
         # Si hay manos detectadas
-        if results.multi_hand_landmarks:
-            for hand_landmarks in results.multi_hand_landmarks:
-                # Extraer coordenadas (x, y, z) de los 21 puntos
-                puntos = []
-                for landmark in hand_landmarks.landmark:
-                    puntos.extend([landmark.x, landmark.y, landmark.z])
+        if results.multi_hand_landmarks and results.multi_handedness:
+            num_manos = len(results.multi_hand_landmarks)
+            
+            # Inicializar con ceros (para cuando no hay mano izquierda o derecha)
+            mano_izquierda = [0.0] * 63  # 21 puntos × 3 coordenadas
+            mano_derecha = [0.0] * 63
+            tiene_izquierda = 0
+            tiene_derecha = 0
+            
+            # Clasificar cada mano detectada
+            for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
+                # MediaPipe devuelve la clasificación (Left/Right)
+                label = handedness.classification[0].label
+                landmarks = extraer_landmarks_mano(hand_landmarks)
                 
-                # Agregar al dataset
-                dataset.append(puntos + [etiqueta])
-                manos_detectadas += 1
+                # Asignar a la mano correspondiente
+                # IMPORTANTE: MediaPipe usa la perspectiva de la cámara (espejo)
+                # "Right" en MediaPipe = mano derecha del usuario
+                if label == "Right":
+                    mano_derecha = landmarks
+                    tiene_derecha = 1
+                else:  # "Left"
+                    mano_izquierda = landmarks
+                    tiene_izquierda = 1
+            
+            # Crear una sola muestra con ambas manos
+            # Formato: [63 valores mano izq] + [63 valores mano der] + [tiene_izq, tiene_der] + [etiqueta]
+            muestra = mano_izquierda + mano_derecha + [tiene_izquierda, tiene_derecha] + [etiqueta]
+            dataset.append(muestra)
+            manos_detectadas += 1
     
     pbar.close()
     cap.release()
     return manos_detectadas
 
 def main():
-    carpeta_dataset = "LSA"
+    carpeta_dataset = "C:\ingenieria Informatica\Quinto año\Proyecto LSA\LSA"
     
-    print("🚀 GENERANDO DATASET DE LENGUAJE DE SEÑAS")
+    print("🚀 GENERANDO DATASET DE LENGUAJE DE SEÑAS (2 MANOS)")
     print("=" * 50)
     
     # Verificar estructura de carpetas y contar videos
@@ -82,17 +111,15 @@ def main():
     
     if videos_directos:
         print(f"📹 Videos encontrados directamente en LSA: {len(videos_directos)}")
-        # Si los videos están directos, extraer clase del nombre del archivo
         for video in videos_directos:
-            # Asumiendo formato como "001_001_001.mp4" donde "001" es la clase
-            clase = video.split('_')[0]  # Extrae los primeros 3 dígitos
+            clase = video.split('_')[0]
             ruta_video = os.path.join(carpeta_dataset, video)
             todos_los_videos.append((ruta_video, clase))
             if clase not in clases:
                 clases.append(clase)
         total_videos = len(videos_directos)
     else:
-        # Videos en subcarpetas (estructura original)
+        # Videos en subcarpetas
         for clase in contenido:
             ruta_clase = os.path.join(carpeta_dataset, clase)
             if os.path.isdir(ruta_clase):
@@ -133,11 +160,15 @@ def main():
     
     if len(dataset) > 0:
         # Crear columnas
-        columnas = [f"{eje}{i}" for i in range(21) for eje in ['x', 'y', 'z']] + ["label"]
+        # 63 columnas para mano izquierda + 63 para mano derecha + 2 flags + label
+        columnas_izq = [f"left_{eje}{i}" for i in range(21) for eje in ['x', 'y', 'z']]
+        columnas_der = [f"right_{eje}{i}" for i in range(21) for eje in ['x', 'y', 'z']]
+        columnas = columnas_izq + columnas_der + ["has_left", "has_right", "label"]
+        
         df = pd.DataFrame(dataset, columns=columnas)
         
         # Guardar CSV
-        archivo_salida = "dataset_manos_lsa.csv"
+        archivo_salida = "dataset_manos_lsa_v2.csv"
         df.to_csv(archivo_salida, index=False)
         
         # Estadísticas finales
@@ -147,6 +178,16 @@ def main():
         print(f"   📊 Videos procesados: {videos_procesados}")
         print(f"   📊 Detecciones totales: {total_detecciones:,}")
         print(f"   📊 Clases únicas: {df['label'].nunique()}")
+        
+        # Estadísticas de uso de manos
+        solo_izq = df[(df['has_left'] == 1) & (df['has_right'] == 0)].shape[0]
+        solo_der = df[(df['has_left'] == 0) & (df['has_right'] == 1)].shape[0]
+        ambas = df[(df['has_left'] == 1) & (df['has_right'] == 1)].shape[0]
+        
+        print(f"\n👐 Estadísticas de uso de manos:")
+        print(f"   Solo izquierda: {solo_izq:,} muestras ({solo_izq/len(df)*100:.1f}%)")
+        print(f"   Solo derecha: {solo_der:,} muestras ({solo_der/len(df)*100:.1f}%)")
+        print(f"   Ambas manos: {ambas:,} muestras ({ambas/len(df)*100:.1f}%)")
         
         print(f"\n📈 Distribución por clase:")
         distribucion = df['label'].value_counts().sort_index()
@@ -164,5 +205,3 @@ def main():
 if __name__ == "__main__":
     main()
     print("\n🎉 ¡Proceso completado!")
-
-    
