@@ -266,8 +266,6 @@ def api_register():
     exito, mensaje = crear_usuario(nombre, email, password)
     
     if exito:
-        session['user_email'] = email
-        session['username'] = nombre
         return jsonify({"success": True, "message": mensaje})
     else:
         return jsonify({"success": False, "message": mensaje}), 400
