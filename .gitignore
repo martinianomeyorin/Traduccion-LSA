@@ -2,8 +2,8 @@
 .env
 
 # Modelos de Machine Learning y datos pesados
-*.h5
-*.pkl
+modelo_gestos.h5
+labels.pkl
 #Carpeta con los videos de entrenamiento
 LSA/
 # Carpetas y archivos de caché de Python
