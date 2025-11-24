@@ -12,34 +12,27 @@ from dotenv import load_dotenv
 
 # --- IMPORTAMOS LA BASE DE DATOS Y MODELOS ---
 # Asegúrate de que models.py esté en la misma carpeta
-from UserModels import db, crear_usuario, autenticar_usuario
-
+from Models.UserModels import db, crear_usuario, autenticar_usuario
+from Models.HistorialModels import guardar_historial, borrar_mensaje, HistorialMensaje
 load_dotenv()
 
 app = Flask(__name__)
 
 # ============= CONFIGURACIÓN DE BASE DE DATOS =============
-app.secret_key = "marti123"
-
-DB_USER = "postgres"
-DB_PASS = "marti123"
-DB_HOST = "localhost"
-DB_PORT = "5432"
-DB_NAME = "LSA"
-
-app.config['SQLALCHEMY_DATABASE_URI'] = f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:marti123@127.0.0.1:5432/LSA'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.secret_key = 'marti123' 
 
 db.init_app(app)
 
 with app.app_context():
-    db.create_all() 
-    print("💾 Conectado a PostgreSQL (Base: LSA).")
+    db.create_all()
+    print("💾 Conectado a PostgreSQL (Base: LSA). Tablas verificadas.")
 
 # ============= CONFIGURACIÓN GLOBAL IA =============
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-print("🚀 Cargando modelo...")
+print("🚀 Cargando modelo de gestos...")
 try:
     model = tf.keras.models.load_model("modelo_gestos_v2.h5")
     with open("labels_v2.pkl", "rb") as f:
@@ -68,7 +61,7 @@ estado_app = {
     "manos_detectadas": 0
 }
 
-# Variables de control
+# Variables de control para la lógica de detección
 variables_control = {
     "ultima_palabra": None,
     "contador_misma_palabra": 0,
@@ -83,7 +76,9 @@ def extraer_landmarks_mano(hand_landmarks):
         puntos.extend([landmark.x, landmark.y, landmark.z])
     return puntos
 
-def consultar_chatgpt_async():
+# === FUNCIÓN ASÍNCRONA PARA CONSULTAR CHATGPT ===
+def consultar_chatgpt_async(app_instance, user_email):
+    # 1. Validación inicial
     if not estado_app["palabras"]:
         estado_app["estado_ia"] = "error"
         return
@@ -91,6 +86,7 @@ def consultar_chatgpt_async():
     oracion_primitiva = " ".join(estado_app["palabras"]).strip()
     estado_app["estado_ia"] = "cargando"
     
+    # 2. Configuración OpenAI
     headers = {
         "Content-Type": "application/json", 
         "Authorization": f"Bearer {OPENAI_API_KEY}"
@@ -112,21 +108,53 @@ Oración mejorada:"""
     }
     
     try:
+        # 3. Petición a OpenAI
         response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=data, timeout=10)
+        
         if response.status_code == 200:
             res = response.json()
             mejorada = res['choices'][0]['message']['content'].strip().replace("Oración mejorada:", "").strip()
+            
+            # Actualizamos estado global
             estado_app["oracion_mejorada"] = mejorada
             estado_app["estado_ia"] = "listo"
+
+            # === SECCIÓN DE GUARDADO CON DEBUG ===
+            print(f"\n--- INTENTO DE GUARDAR HISTORIAL ---")
+            print(f"📧 Email recibido: '{user_email}'")
+            print(f"📝 Mensaje: '{mejorada}'")
+
+            if user_email:
+                try:
+                    # Usamos el contexto de la aplicación para conectar a la BD
+                    with app_instance.app_context():
+                        # Llamamos a la función y capturamos el resultado
+                        exito = guardar_historial(user_email, mejorada)
+                        
+                        if exito:
+                            print("✅ ÉXITO: Mensaje guardado en la base de datos.")
+                        else:
+                            print("❌ ERROR: guardar_historial devolvió False. (Revisa si el usuario existe en la tabla usuarios)")
+                except Exception as db_error:
+                    print(f"❌ CRASH BD: Falló la conexión dentro del hilo: {db_error}")
+            else:
+                print("⚠️ ALERTA: No se guardó porque el user_email es None o vacío.")
+            
+            print("------------------------------------\n")
+            # ======================================
+
         else:
+            print(f"Error OpenAI status: {response.status_code}")
             estado_app["estado_ia"] = "error"
+            
     except Exception as e:
+        print(f"Error General OpenAI: {e}")
         estado_app["estado_ia"] = "error"
 
 def generar_frames():
-    cap = cv2.VideoCapture(2) 
+    cap = cv2.VideoCapture(0) 
     if not cap.isOpened():
-        cap = cv2.VideoCapture(1)
+        cap = cv2.VideoCapture(2)
         if not cap.isOpened(): return
     
     while True:
@@ -193,7 +221,9 @@ def generar_frames():
             variables_control["contador_misma_palabra"] = 0
             variables_control["ultima_palabra"] = None
 
+        # Dibujar info en pantalla (opcional para debug)
         cv2.putText(frame, mensaje_debug, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        
         ret, buffer = cv2.imencode('.jpg', frame)
         frame = buffer.tobytes()
         yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
@@ -237,9 +267,10 @@ def api_register():
     exito, mensaje = crear_usuario(nombre, email, password)
     
     if exito:
+        session['user_email'] = email
+        session['username'] = nombre
         return jsonify({"success": True, "message": mensaje})
     else:
-        # Esto te dirá por qué falló (ej. email duplicado)
         return jsonify({"success": False, "message": mensaje}), 400
 
 @app.route('/logout')
@@ -272,20 +303,69 @@ def get_data():
 
 @app.route('/accion', methods=['POST'])
 def accion():
-    req = request.json
-    tipo = req.get('tipo')
-    if tipo == 'limpiar':
-        estado_app["palabras"] = []
-        estado_app["oracion_mejorada"] = ""
-        estado_app["estado_ia"] = "idle"
-        estado_app["ultima_deteccion"] = "-"
-        variables_control["contador_misma_palabra"] = 0
-    elif tipo == 'espacio':
-        estado_app["palabras"].append(" ")
-    elif tipo == 'mejorar':
-        if estado_app["palabras"]:
-            threading.Thread(target=consultar_chatgpt_async).start()
-    return jsonify({"status": "ok"})
+    try:
+        # Validación básica
+        if not request.is_json:
+            return jsonify({"status": "error", "message": "JSON requerido"}), 400
+
+        req = request.json
+        tipo = req.get('tipo')
+        
+        if tipo == 'limpiar':
+            estado_app["palabras"] = []
+            estado_app["oracion_mejorada"] = ""
+            estado_app["estado_ia"] = "idle"
+            estado_app["ultima_deteccion"] = "-"
+            variables_control["contador_misma_palabra"] = 0
+            
+        elif tipo == 'espacio':
+            estado_app["palabras"].append(" ")
+            
+        elif tipo == 'mejorar':
+            if estado_app["palabras"]:
+                user_email = session.get('user_email')
+                
+                if user_email:
+                    # --- CORRECCIÓN AQUÍ ---
+                    # Pasamos 'app' directamente. No uses ._get_current_object()
+                    threading.Thread(
+                        target=consultar_chatgpt_async, 
+                        args=(app, user_email) 
+                    ).start()
+                    # -----------------------
+                else:
+                    print("⚠️ Intento de mejorar oración sin usuario en sesión")
+                    return jsonify({"status": "error", "message": "Sesión expirada"}), 401
+                    
+        return jsonify({"status": "ok"})
+
+    except Exception as e:
+        print(f"❌ ERROR CRÍTICO EN /accion: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+    
+# === RUTAS DE HISTORIAL (API) ===
+
+@app.route('/api/historial', methods=['GET'])
+def get_historial_api():
+    if 'user_email' not in session:
+        return jsonify([])
+    
+    # Consulta a la base de datos usando el modelo importado
+    mensajes = HistorialMensaje.query.filter_by(email=session['user_email'])\
+        .order_by(HistorialMensaje.fecha_hora.desc()).limit(20).all()
+        
+    return jsonify([m.to_json() for m in mensajes])
+
+@app.route('/api/historial/<int:id>', methods=['DELETE'])
+def delete_historial_api(id):
+    if 'user_email' not in session:
+        return jsonify({"success": False}), 401
+    
+    exito = borrar_mensaje(id, session['user_email'])
+    if exito:
+        return jsonify({"success": True})
+    else:
+        return jsonify({"success": False, "message": "Error al borrar"}), 400
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)

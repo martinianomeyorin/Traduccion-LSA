@@ -7,22 +7,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        * { 
-            margin: 0; 
-            padding: 0; 
-            box-sizing: border-box; 
-        }
-        
-        html, body {
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-        }
-
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f5f5f5;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; overflow: hidden; }
+        body { font-family: 'Inter', sans-serif; background-color: #f5f5f5; }
 
         /* HEADER VERDE */
         header {
@@ -35,312 +22,98 @@
             height: 60px;
         }
 
-        /* ESTILOS DEL MENÚ DESPLEGABLE (NUEVO) */
-        .user-menu-wrapper {
-            position: relative;
-            cursor: pointer;
-            user-select: none;
-        }
-
+        .user-menu-wrapper { position: relative; cursor: pointer; user-select: none; }
         .user-info {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-weight: 500;
-            font-size: 15px;
-            padding: 5px 10px;
-            border-radius: 6px;
-            transition: background 0.2s;
+            display: flex; align-items: center; gap: 12px; font-weight: 500; font-size: 15px;
+            padding: 5px 10px; border-radius: 6px; transition: background 0.2s;
         }
-        
-        .user-info:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-
+        .user-info:hover { background-color: rgba(255, 255, 255, 0.1); }
         .dropdown-menu {
-            display: none;
-            position: absolute;
-            top: 100%;
-            left: 0;
-            margin-top: 5px;
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-            min-width: 180px;
-            overflow: hidden;
-            z-index: 1000;
-            border: 1px solid #e5e7eb;
+            display: none; position: absolute; top: 100%; left: 0; margin-top: 5px;
+            background-color: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            min-width: 180px; overflow: hidden; z-index: 1000; border: 1px solid #e5e7eb;
         }
-
-        .dropdown-menu.show {
-            display: block;
-            animation: fadeIn 0.2s ease;
-        }
-
+        .dropdown-menu.show { display: block; animation: fadeIn 0.2s ease; }
         .dropdown-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 12px 16px;
-            color: #374151;
-            text-decoration: none;
-            font-size: 14px;
-            font-weight: 500;
+            display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+            color: #374151; text-decoration: none; font-size: 14px; font-weight: 500;
             transition: background 0.2s, color 0.2s;
         }
-
-        .dropdown-item:hover {
-            background-color: #f3f4f6;
-            color: #d32f2f;
-        }
-
+        .dropdown-item:hover { background-color: #f3f4f6; color: #d32f2f; }
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(-10px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
-        .logo-center {
-            position: absolute;
-            left: 50%;
-            transform: translateX(-50%);
+        .logo-center { position: absolute; left: 50%; transform: translateX(-50%); }
+        .logo-center img { height: 45px; }
+
+        .main-container {
+            display: flex; justify-content: center; padding: 30px 40px; gap: 30px;
+            height: calc(100vh - 60px); overflow-y: auto; align-items: flex-start;
+        }
+        .content-wrapper { display: flex; gap: 30px; max-width: 1600px; width: 100%; }
+        
+        .left-column { flex: 1; display: flex; flex-direction: column; max-width: 940px; }
+        
+        h1 { color: #00683e; font-size: 2.2rem; font-weight: 700; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+        
+        .video-container {
+            width: 100%; background: black; border-radius: 8px; overflow: hidden;
+            margin-bottom: 15px; position: relative; aspect-ratio: 16/9;
+        }
+        #video-stream { width: 100%; height: 100%; object-fit: contain; }
+        
+        .stats-bar { display: flex; justify-content: center; gap: 60px; margin-bottom: 20px; font-size: 14px; font-weight: 500; }
+        .stat-item { display: flex; align-items: center; gap: 6px; color: #333; }
+        
+        .button-row { display: flex; justify-content: center; gap: 15px; margin-bottom: 30px; }
+        .btn {
+            padding: 11px 26px; border: none; border-radius: 6px; font-size: 15px; font-weight: 600;
+            cursor: pointer; display: flex; align-items: center; gap: 8px; transition: transform 0.1s, opacity 0.2s;
+        }
+        .btn:hover { opacity: 0.9; }
+        .btn:active { transform: scale(0.98); }
+        .btn-espacio { background-color: #5D87FF; color: white; }
+        .btn-mejorar { background-color: #13DEB9; color: white; }
+        .btn-limpiar { background-color: #FA896B; color: white; }
+        
+        .output-section { margin-bottom: 20px; }
+        .output-label { font-weight: 600; font-size: 14px; color: #1f2937; margin-bottom: 8px; display: block; }
+        .output-box {
+            width: 100%; padding: 16px 18px; border-radius: 8px; font-size: 15px;
+            min-height: 55px; border: 1px solid #ddd; line-height: 1.5;
+        }
+        .output-primitive { background-color: #f5f5f5; color: #333; }
+        .output-ia { background-color: #d1fae5; border-color: #a7f3d0; color: #064e3b; }
+
+        /* HISTORIAL */
+        .history-sidebar {
+            width: 380px; background-color: #e5e7eb; border-radius: 10px; display: flex;
+            flex-direction: column; height: fit-content; border: 1px solid #d1d5db; flex-shrink: 0;
+        }
+        .history-header {
+            padding: 16px 20px; font-weight: 700; font-size: 15px; color: #1f2937;
+            display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #d1d5db;
+        }
+        .history-content { padding: 15px; overflow-y: auto; max-height: 500px; display: flex; flex-direction: column; gap: 12px; }
+        .history-item {
+            background: white; padding: 14px 16px; padding-right: 45px; border-radius: 8px;
+            font-size: 14px; color: #374151; position: relative; line-height: 1.5; border: 1px solid #d1d5db;
+        }
+        .history-delete {
+            position: absolute; right: 14px; top: 14px; cursor: pointer; color: #00683e;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .history-delete:hover { color: #004d2e; }
+        .history-footer {
+            padding: 14px; text-align: center; border-top: 1px solid #d1d5db; font-weight: 700;
+            color: #00683e; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;
         }
         
-        .logo-center img {
-            height: 45px;
-        }
-
-        /* CONTENEDOR PRINCIPAL */
-        .main-container {
-            display: flex;
-            justify-content: center;
-            padding: 30px 40px;
-            gap: 30px;
-            height: calc(100vh - 60px);
-            overflow-y: auto;
-            align-items: flex-start;
-        }
-
-        /* CONTENEDOR DE TODO EL CONTENIDO CENTRADO */
-        .content-wrapper {
-            display: flex;
-            gap: 30px;
-            max-width: 1600px;
-            width: 100%;
-        }
-
-        /* COLUMNA IZQUIERDA */
-        .left-column {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            max-width: 940px;
-        }
-
-        h1 {
-            color: #00683e;
-            font-size: 2.2rem;
-            font-weight: 700;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        /* VIDEO BOX */
-        .video-container {
-            width: 100%;
-            background: black;
-            border-radius: 8px;
-            overflow: hidden;
-            margin-bottom: 15px;
-            position: relative;
-            aspect-ratio: 16/9;
-        }
-
-        #video-stream {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-        }
-
-        /* ESTADÍSTICAS DEBAJO DEL VIDEO */
-        .stats-bar {
-            display: flex;
-            justify-content: center;
-            gap: 60px;
-            margin-bottom: 20px;
-            font-size: 14px;
-            font-weight: 500;
-        }
-
-        .stat-item {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            color: #333;
-        }
-
-        /* BOTONES */
-        .button-row {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            margin-bottom: 30px;
-        }
-
-        .btn {
-            padding: 11px 26px;
-            border: none;
-            border-radius: 6px;
-            font-size: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            transition: transform 0.1s, opacity 0.2s;
-        }
-
-        .btn:hover {
-            opacity: 0.9;
-        }
-
-        .btn:active {
-            transform: scale(0.98);
-        }
-
-        .btn-espacio {
-            background-color: #5D87FF;
-            color: white;
-        }
-
-        .btn-mejorar {
-            background-color: #13DEB9;
-            color: white;
-        }
-
-        .btn-limpiar {
-            background-color: #FA896B;
-            color: white;
-        }
-
-        /* CAJAS DE TEXTO */
-        .output-section {
-            margin-bottom: 20px;
-        }
-
-        .output-label {
-            font-weight: 600;
-            font-size: 14px;
-            color: #1f2937;
-            margin-bottom: 8px;
-            display: block;
-        }
-
-        .output-box {
-            width: 100%;
-            padding: 16px 18px;
-            border-radius: 8px;
-            font-size: 15px;
-            min-height: 55px;
-            border: 1px solid #ddd;
-            line-height: 1.5;
-        }
-
-        .output-primitive {
-            background-color: #f5f5f5;
-            color: #333;
-        }
-
-        .output-ia {
-            background-color: #d1fae5;
-            border-color: #a7f3d0;
-            color: #064e3b;
-        }
-
-        /* HISTORIAL (DERECHA) - ALINEADO CON EL VIDEO */
-        .history-sidebar {
-            width: 380px;
-            background-color: #e5e7eb;
-            border-radius: 10px;
-            display: flex;
-            flex-direction: column;
-            height: fit-content;
-            border: 1px solid #d1d5db;
-            flex-shrink: 0;
-        }
-
-        .history-header {
-            padding: 16px 20px;
-            font-weight: 700;
-            font-size: 15px;
-            color: #1f2937;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid #d1d5db;
-        }
-
-        .history-content {
-            padding: 15px;
-            overflow-y: auto;
-            max-height: 500px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .history-item {
-            background: white;
-            padding: 14px 16px;
-            padding-right: 45px;
-            border-radius: 8px;
-            font-size: 14px;
-            color: #374151;
-            position: relative;
-            line-height: 1.5;
-            border: 1px solid #d1d5db;
-        }
-
-        .history-delete {
-            position: absolute;
-            right: 14px;
-            top: 14px;
-            cursor: pointer;
-            color: #00683e;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .history-delete:hover {
-            color: #004d2e;
-        }
-
-        .history-footer {
-            padding: 14px;
-            text-align: center;
-            border-top: 1px solid #d1d5db;
-            font-weight: 700;
-            color: #00683e;
-            font-size: 14px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-
-        /* RESPONSIVE */
         @media (max-width: 1400px) {
-            .content-wrapper {
-                flex-direction: column;
-                align-items: center;
-            }
-            
-            .history-sidebar {
-                width: 100%;
-                max-width: 940px;
-            }
+            .content-wrapper { flex-direction: column; align-items: center; }
+            .history-sidebar { width: 100%; max-width: 940px; }
         }
     </style>
 </head>
@@ -352,7 +125,6 @@
                 <span>{{ username if username else 'Usuario' }}</span>
                 <i data-lucide="chevron-down" style="width: 16px; height: 16px;"></i>
             </div>
-
             <div class="dropdown-menu" id="userDropdown">
                 <a href="/logout" class="dropdown-item">
                     <i data-lucide="log-out" style="width: 18px; height: 18px;"></i>
@@ -360,11 +132,9 @@
                 </a>
             </div>
         </div>
-        
         <div class="logo-center">
-            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo" style="height: 40px;">
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo">
         </div>
-        
         <div style="width: 180px;"></div>
     </header>
 
@@ -378,21 +148,13 @@
                 </div>
 
                 <div class="stats-bar">
-                    <div class="stat-item">
-                        👋 Manos: <strong id="manos-count">0</strong>
-                    </div>
-                    <div class="stat-item">
-                        🎯 Confianza: <strong id="confianza-value">33%</strong>
-                    </div>
-                    <div class="stat-item">
-                        📝 Última señal: <strong id="ultima-sena">-</strong>
-                    </div>
+                    <div class="stat-item">👋 Manos: <strong id="manos-count">0</strong></div>
+                    <div class="stat-item">🎯 Confianza: <strong id="confianza-value">0%</strong></div>
+                    <div class="stat-item">📝 Última señal: <strong id="ultima-sena">-</strong></div>
                 </div>
 
                 <div class="button-row">
-                    <button class="btn btn-espacio" onclick="accion('espacio')">
-                        Espacio
-                    </button>
+                    <button class="btn btn-espacio" onclick="accion('espacio')">Espacio</button>
                     <button class="btn btn-mejorar" onclick="accion('mejorar')">
                         <i data-lucide="bot-message-square" style="width: 16px; height: 16px;"></i>
                         Mejorar con IA
@@ -405,18 +167,13 @@
 
                 <div class="output-section">
                     <label class="output-label">Oración detectada:</label>
-                    <div class="output-box output-primitive" id="oracion-detectada">
-                        ...
-                    </div>
+                    <div class="output-box output-primitive" id="oracion-detectada">...</div>
                 </div>
 
                 <div class="output-section">
                     <label class="output-label">Traducción IA:</label>
-                    <div class="output-box output-ia" id="traduccion-ia">
-                        Esperando petición...
-                    </div>
+                    <div class="output-box output-ia" id="traduccion-ia">Esperando petición...</div>
                 </div>
-            
             </div>
 
             <aside class="history-sidebar">
@@ -424,42 +181,18 @@
                     Historial de Mensajes
                     <i data-lucide="chevron-down" style="width: 20px; height: 20px;"></i>
                 </div>
-                
                 <div class="history-content" id="history-list">
-                    <div class="history-item">
-                        Hola como estas?
-                        <span class="history-delete" onclick="eliminarHistorial(0)">
-                            <i data-lucide="trash-2" style="width: 18px; height: 18px;"></i>
-                        </span>
-                    </div>
-                    <div class="history-item">
-                        Ayer por la noche cocinamos un asado con mis amigos
-                        <span class="history-delete" onclick="eliminarHistorial(1)">
-                            <i data-lucide="trash-2" style="width: 18px; height: 18px;"></i>
-                        </span>
-                    </div>
-                    <div class="history-item">
-                        Mañana vamos a jugar un partido de futbol, te queres sumar? Vienen todos los chicos
-                        <span class="history-delete" onclick="eliminarHistorial(2)">
-                            <i data-lucide="trash-2" style="width: 18px; height: 18px;"></i>
-                        </span>
-                    </div>
-                </div>
-
-                <div class="history-footer">
-                    <i data-lucide="chevrons-left" style="width: 16px; height: 16px;"></i>
-                    <span>1</span>
-                    <i data-lucide="chevrons-right" style="width: 16px; height: 16px;"></i>
+                    <div style="text-align: center; color: #888; margin-top: 20px;">Cargando historial...</div>
                 </div>
             </aside>
         </div>
     </div>
 
     <script>
-        // Inicializar iconos de Lucide
+        // Inicializar iconos
         lucide.createIcons();
 
-        // --- LÓGICA DEL MENÚ DE USUARIO (NUEVO) ---
+        // --- MENÚ DE USUARIO ---
         const menuBtn = document.getElementById('userMenuBtn');
         const dropdown = document.getElementById('userDropdown');
 
@@ -469,66 +202,144 @@
         });
 
         window.addEventListener('click', () => {
-            if (dropdown.classList.contains('show')) {
-                dropdown.classList.remove('show');
-            }
+            if (dropdown.classList.contains('show')) dropdown.classList.remove('show');
         });
 
-        // Actualizar datos desde el backend
+        // --- POLLING DE DATOS ---
+        let ultimoEstadoIA = ""; 
+
         setInterval(async () => {
             try {
                 const res = await fetch('/get_data');
-                
-                if (!res.ok) {
-                    throw new Error(`HTTP error! status: ${res.status}`);
-                }
+                // Si falla el polling, no rompemos todo, solo lo logueamos
+                if (!res.ok) return; 
                 
                 const data = await res.json();
                 
-                // Actualizar stats
+                // Actualizar interfaz
                 document.getElementById('manos-count').innerText = data.manos || 0;
                 document.getElementById('confianza-value').innerText = (data.confianza || 0) + '%';
                 document.getElementById('ultima-sena').innerText = data.ultima_signo || '-';
+                document.getElementById('oracion-detectada').innerText = data.oracion_raw || '...';
                 
-                // Actualizar oración detectada
-                const oracionRaw = data.oracion_raw || '...';
-                document.getElementById('oracion-detectada').innerText = oracionRaw;
-                
-                // Actualizar traducción IA
                 const iaBox = document.getElementById('traduccion-ia');
+                
                 if (data.estado_ia === 'cargando') {
                     iaBox.innerText = '⏳ Consultando a ChatGPT...';
+                    iaBox.style.backgroundColor = '#fff7ed'; // Naranja clarito
+                    iaBox.style.color = '#c2410c';
                 } else if (data.estado_ia === 'listo') {
                     iaBox.innerText = data.oracion_mejorada || 'Sin respuesta';
+                    iaBox.style.backgroundColor = '#d1fae5'; // Verde original
+                    iaBox.style.color = '#064e3b';
+                    
+                    // Si la IA terminó, recargamos historial
+                    if (ultimoEstadoIA !== 'listo') {
+                        cargarHistorial(); 
+                    }
                 } else {
                     iaBox.innerText = 'Esperando petición...';
+                    iaBox.style.backgroundColor = '#f3f4f6'; // Gris default
+                    iaBox.style.color = '#374151';
                 }
-            } catch (e) {
-                console.error('Error conectando con backend:', e);
-                document.getElementById('oracion-detectada').innerText = 'Error de conexión';
-            }
+                
+                ultimoEstadoIA = data.estado_ia;
+
+            } catch (e) { console.error('Error polling:', e); }
         }, 500);
 
-        // Enviar acciones al backend
+        // --- FUNCIONES DEL HISTORIAL CORREGIDAS ---
+        async function cargarHistorial() {
+            const contenedor = document.getElementById('history-list');
+            
+            try {
+                const res = await fetch('/api/historial');
+                
+                // Si la sesión expiró (401), redirigir
+                if (res.status === 401) {
+                    window.location.href = '/';
+                    return;
+                }
+
+                const historial = await res.json();
+                
+                // Limpiar el "Cargando..."
+                contenedor.innerHTML = ''; 
+                
+                // CASO 1: ARRAY VACÍO (Aquí estaba el problema visual)
+                if (!historial || historial.length === 0) {
+                    contenedor.innerHTML = `
+                        <div style="text-align:center; color:#9ca3af; padding:30px; display:flex; flex-direction:column; align-items:center; gap:10px;">
+                            <i data-lucide="inbox" style="width:32px; height:32px; opacity:0.5;"></i>
+                            <span style="font-size:14px;">No hay historial aún</span>
+                        </div>`;
+                    lucide.createIcons();
+                    return;
+                }
+
+                // CASO 2: HAY MENSAJES
+                historial.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'history-item';
+                    div.innerHTML = `
+                        <div style="padding-right: 20px;">${item.mensaje}</div>
+                        <div style="font-size: 11px; color: #9ca3af; margin-top: 8px; text-align: right;">
+                            ${item.fecha}
+                        </div>
+                        <span class="history-delete" onclick="eliminarHistorial(${item.id})">
+                            <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+                        </span>
+                    `;
+                    contenedor.appendChild(div);
+                });
+                
+                lucide.createIcons(); 
+
+            } catch (error) {
+                console.error("Error cargando historial:", error);
+                contenedor.innerHTML = '<div style="text-align:center; color:red; padding:20px;">Error de conexión</div>';
+            }
+        }
+
+        async function eliminarHistorial(id) {
+            // Confirmación simple
+            if(!confirm("¿Borrar mensaje?")) return;
+
+            try {
+                const res = await fetch(`/api/historial/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+                
+                if (data.success) {
+                    cargarHistorial(); // Recargar visualmente
+                } else {
+                    alert("No se pudo borrar: " + (data.message || "Error desconocido"));
+                }
+            } catch (error) {
+                console.error(error);
+                alert("Error de conexión al borrar");
+            }
+        }
+
         async function accion(tipo) {
             try {
-                await fetch('/accion', {
+                const res = await fetch('/accion', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ tipo: tipo })
                 });
-            } catch (e) {
-                console.error('Error en acción:', e);
+                
+                if (!res.ok) {
+                    const err = await res.json();
+                    console.error("Error del servidor:", err);
+                    if(res.status === 401) alert("Su sesión ha expirado, por favor inicie sesión nuevamente.");
+                }
+            } catch (e) { 
+                console.error("Error de red:", e); 
             }
         }
 
-        // Eliminar elemento del historial
-        function eliminarHistorial(index) {
-            const items = document.querySelectorAll('.history-item');
-            if (items[index]) {
-                items[index].remove();
-            }
-        }
+        // Cargar historial apenas carga la página
+        document.addEventListener('DOMContentLoaded', cargarHistorial);
     </script>
 </body>
 </html>
