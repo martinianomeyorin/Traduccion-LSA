@@ -159,7 +159,7 @@ def generar_frames():
     while True:
         success, frame = cap.read()
         if not success: break
-
+        frame = cv2.flip(frame, 1)
         img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = hands.process(img_rgb)
         
@@ -325,13 +325,10 @@ def accion():
                 user_email = session.get('user_email')
                 
                 if user_email:
-                    # --- CORRECCIÓN AQUÍ ---
-                    # Pasamos 'app' directamente. No uses ._get_current_object()
                     threading.Thread(
                         target=consultar_chatgpt_async, 
                         args=(app, user_email) 
                     ).start()
-                    # -----------------------
                 else:
                     print("⚠️ Intento de mejorar oración sin usuario en sesión")
                     return jsonify({"status": "error", "message": "Sesión expirada"}), 401
@@ -349,7 +346,6 @@ def get_historial_api():
     if 'user_email' not in session:
         return jsonify([])
     
-    # Consulta a la base de datos usando el modelo importado
     mensajes = HistorialMensaje.query.filter_by(email=session['user_email'])\
         .order_by(HistorialMensaje.fecha_hora.desc()).limit(20).all()
         

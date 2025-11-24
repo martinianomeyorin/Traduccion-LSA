@@ -1,8 +1,13 @@
 from datetime import datetime
+import pytz  # <-- IMPORTANTE: agregado
 # --- CAMBIO IMPORTANTE: ---
 # No hacemos "db = SQLAlchemy()". 
 # Importamos la "db" que ya creaste en UserModels para usar la misma conexión.
 from Models.UserModels import db 
+
+# Función para obtener hora de Argentina
+def arg_now():
+    return datetime.now(pytz.timezone("America/Argentina/Buenos_Aires"))
 
 class HistorialMensaje(db.Model):
     __tablename__ = 'historial_mensajes'
@@ -10,7 +15,7 @@ class HistorialMensaje(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), db.ForeignKey('usuarios.email'), nullable=False)
     mensaje = db.Column(db.Text, nullable=False)
-    fecha_hora = db.Column(db.DateTime, default=datetime.utcnow)
+    fecha_hora = db.Column(db.DateTime, default=arg_now)  # <-- CAMBIADO
 
     def to_json(self):
         return {

@@ -1,9 +1,14 @@
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
+import pytz
 
 # Inicializamos la extensión de base de datos
 db = SQLAlchemy()
+
+# Función para obtener la hora local de Argentina
+def arg_now():
+    return datetime.now(pytz.timezone("America/Argentina/Buenos_Aires"))
 
 class User(db.Model):
     __tablename__ = 'usuarios'
@@ -11,7 +16,7 @@ class User(db.Model):
     email = db.Column(db.String(255), primary_key=True)  
     nombre = db.Column(db.String(100), nullable=False)
     contraseña = db.Column(db.String(255), nullable=False)
-    fecha_alta = db.Column(db.DateTime, default=datetime.utcnow)
+    fecha_alta = db.Column(db.DateTime, default=arg_now)  # <-- CAMBIADO
 
     def set_password(self, password):
         """Encripta la contraseña y la guarda en la columna 'contraseña'"""
