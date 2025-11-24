@@ -9,7 +9,7 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body { width: 100%; height: 100%; overflow: hidden; }
-        body { font-family: 'Inter', sans-serif; background-color: #f5f5f5; }
+        body { font-family: 'Inter', sans-serif; background-color: #f8f9fa; } /* Fondo general muy claro */
 
         /* HEADER VERDE */
         header {
@@ -20,6 +20,9 @@
             align-items: center;
             justify-content: space-between;
             height: 60px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 100;
+            position: relative;
         }
 
         .user-menu-wrapper { position: relative; cursor: pointer; user-select: none; }
@@ -48,6 +51,7 @@
         .logo-center { position: absolute; left: 50%; transform: translateX(-50%); }
         .logo-center img { height: 45px; }
 
+        /* LAYOUT PRINCIPAL */
         .main-container {
             display: flex; justify-content: center; padding: 30px 40px; gap: 30px;
             height: calc(100vh - 60px); overflow-y: auto; align-items: flex-start;
@@ -56,11 +60,12 @@
         
         .left-column { flex: 1; display: flex; flex-direction: column; max-width: 940px; }
         
-        h1 { color: #00683e; font-size: 2.2rem; font-weight: 700; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+        h1 { color: #00683e; font-size: 2.2rem; font-weight: 700; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; line-height: 1.2; }
         
         .video-container {
-            width: 100%; background: black; border-radius: 8px; overflow: hidden;
+            width: 100%; background: black; border-radius: 12px; overflow: hidden;
             margin-bottom: 15px; position: relative; aspect-ratio: 16/9;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
         #video-stream { width: 100%; height: 100%; object-fit: contain; }
         
@@ -69,52 +74,194 @@
         
         .button-row { display: flex; justify-content: center; gap: 15px; margin-bottom: 30px; }
         .btn {
-            padding: 11px 26px; border: none; border-radius: 6px; font-size: 15px; font-weight: 600;
+            padding: 11px 26px; border: none; border-radius: 8px; font-size: 15px; font-weight: 600;
             cursor: pointer; display: flex; align-items: center; gap: 8px; transition: transform 0.1s, opacity 0.2s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
-        .btn:hover { opacity: 0.9; }
+        .btn:hover { opacity: 0.9; transform: translateY(-1px); }
         .btn:active { transform: scale(0.98); }
         .btn-espacio { background-color: #5D87FF; color: white; }
         .btn-mejorar { background-color: #13DEB9; color: white; }
         .btn-limpiar { background-color: #FA896B; color: white; }
         
         .output-section { margin-bottom: 20px; }
-        .output-label { font-weight: 600; font-size: 14px; color: #1f2937; margin-bottom: 8px; display: block; }
+        .output-label { font-weight: 600; font-size: 14px; color: #374151; margin-bottom: 8px; display: block; }
         .output-box {
             width: 100%; padding: 16px 18px; border-radius: 8px; font-size: 15px;
-            min-height: 55px; border: 1px solid #ddd; line-height: 1.5;
+            min-height: 55px; border: 1px solid #e5e7eb; line-height: 1.5;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
-        .output-primitive { background-color: #f5f5f5; color: #333; }
-        .output-ia { background-color: #d1fae5; border-color: #a7f3d0; color: #064e3b; }
+        .output-primitive { background-color: white; color: #333; }
+        .output-ia { background-color: #f0fdf4; border-color: #bbf7d0; color: #166534; }
 
-        /* HISTORIAL */
+        /* --- ESTILOS MEJORADOS DEL HISTORIAL (VISUAL CARD STYLE) --- */
         .history-sidebar {
-            width: 380px; background-color: #e5e7eb; border-radius: 10px; display: flex;
-            flex-direction: column; height: fit-content; border: 1px solid #d1d5db; flex-shrink: 0;
+            width: 380px; 
+            background-color: #eef0f3; /* Fondo gris suave pero distinto al body */
+            border-radius: 12px; 
+            display: flex;
+            flex-direction: column; 
+            height: fit-content; 
+            /* Quitamos el borde sólido y usamos una sombra sutil */
+            border: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            flex-shrink: 0;
+            /* Alineación con el video */
+            margin-top: 68px; 
         }
+
         .history-header {
-            padding: 16px 20px; font-weight: 700; font-size: 15px; color: #1f2937;
-            display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #d1d5db;
+            padding: 18px 20px; 
+            font-weight: 700; 
+            font-size: 15px; 
+            color: #111827;
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            border-bottom: 1px solid #e5e7eb;
+            background: rgba(255,255,255,0.5); /* Ligeramente transparente */
+            border-top-left-radius: 12px;
+            border-top-right-radius: 12px;
         }
-        .history-content { padding: 15px; overflow-y: auto; max-height: 500px; display: flex; flex-direction: column; gap: 12px; }
+
+        .history-content { 
+            padding: 15px; 
+            overflow-y: auto; 
+            max-height: 520px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 12px; /* Espacio entre tarjetas */
+        }
+
+        /* DISEÑO DE TARJETA FLOTANTE */
         .history-item {
-            background: white; padding: 14px 16px; padding-right: 45px; border-radius: 8px;
-            font-size: 14px; color: #374151; position: relative; line-height: 1.5; border: 1px solid #d1d5db;
+            background: white; 
+            padding: 16px; 
+            border-radius: 10px;
+            font-size: 14px; 
+            color: #374151; 
+            line-height: 1.5; 
+            /* Sombra suave en lugar de borde */
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            gap: 10px; /* Separar texto de la info de abajo */
         }
+
+        .history-item:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            transform: translateY(-1px);
+        }
+
+        /* Texto del mensaje */
+        .history-message-text {
+            color: #1f2937;
+            font-weight: 500;
+        }
+
+        /* Contenedor inferior (Fecha izquierda - Borrar derecha) */
+        .history-item-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 4px;
+            padding-top: 8px;
+            border-top: 1px solid #f3f4f6;
+        }
+
+        .history-date {
+            font-size: 11px; 
+            color: #9ca3af; 
+            font-weight: 500;
+        }
+
         .history-delete {
-            position: absolute; right: 14px; top: 14px; cursor: pointer; color: #00683e;
-            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; 
+            color: #059669; /* Verde similar al tema */
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            padding: 4px;
+            border-radius: 4px;
+            transition: background 0.2s;
         }
-        .history-delete:hover { color: #004d2e; }
+
+        .history-delete:hover { 
+            background-color: #ecfdf5; 
+            color: #047857; 
+        }
+
         .history-footer {
-            padding: 14px; text-align: center; border-top: 1px solid #d1d5db; font-weight: 700;
+            padding: 14px; text-align: center; border-top: 1px solid #e5e7eb; font-weight: 700;
             color: #00683e; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;
+            background: rgba(255,255,255,0.5);
+            border-bottom-left-radius: 12px;
+            border-bottom-right-radius: 12px;
         }
         
         @media (max-width: 1400px) {
             .content-wrapper { flex-direction: column; align-items: center; }
-            .history-sidebar { width: 100%; max-width: 940px; }
+            .history-sidebar { 
+                width: 100%; 
+                max-width: 940px; 
+                margin-top: 0; 
+            }
         }
+
+        /* ESTILOS DEL MODAL */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(2px);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+            animation: fadeIn 0.2s ease-out;
+        }
+
+        .modal-overlay.open { display: flex; }
+
+        .modal-box {
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 400px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.15);
+            text-align: center;
+            transform: scale(0.95);
+            transition: transform 0.2s;
+        }
+
+        .modal-overlay.open .modal-box { transform: scale(1); }
+
+        .modal-title {
+            font-size: 19px; font-weight: 700; color: #111827; margin-bottom: 12px;
+        }
+
+        .modal-text {
+            font-size: 15px; color: #6b7280; margin-bottom: 30px; line-height: 1.6;
+        }
+
+        .modal-actions { display: flex; justify-content: center; gap: 15px; }
+
+        .btn-modal {
+            padding: 12px 24px; border-radius: 8px; border: none; font-weight: 600;
+            cursor: pointer; font-size: 14px; transition: all 0.2s;
+        }
+
+        .btn-cancel { background-color: #f3f4f6; color: #374151; }
+        .btn-cancel:hover { background-color: #e5e7eb; }
+
+        .btn-delete-confirm { background-color: #066C4D; color: white; }
+        .btn-delete-confirm:hover { background-color: #0a4231; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2); }
     </style>
 </head>
 <body>
@@ -184,7 +331,19 @@
                 <div class="history-content" id="history-list">
                     <div style="text-align: center; color: #888; margin-top: 20px;">Cargando historial...</div>
                 </div>
-            </aside>
+                </aside>
+        </div>
+    </div>
+
+    <div id="deleteModal" class="modal-overlay">
+        <div class="modal-box">
+            <div class="modal-title">¿Eliminar mensaje?</div>
+            <p class="modal-text">Esta acción eliminará el mensaje permanentemente de tu historial. ¿Estás seguro?</p>
+            
+            <div class="modal-actions">
+                <button class="btn-modal btn-delete-confirm" onclick="confirmarBorrado()">Aceptar</button>
+                <button class="btn-modal btn-cancel" onclick="cerrarModal()">Cancelar</button>
+            </div>
         </div>
     </div>
 
@@ -211,12 +370,10 @@
         setInterval(async () => {
             try {
                 const res = await fetch('/get_data');
-                // Si falla el polling, no rompemos todo, solo lo logueamos
                 if (!res.ok) return; 
                 
                 const data = await res.json();
                 
-                // Actualizar interfaz
                 document.getElementById('manos-count').innerText = data.manos || 0;
                 document.getElementById('confianza-value').innerText = (data.confianza || 0) + '%';
                 document.getElementById('ultima-sena').innerText = data.ultima_signo || '-';
@@ -226,20 +383,19 @@
                 
                 if (data.estado_ia === 'cargando') {
                     iaBox.innerText = '⏳ Consultando a ChatGPT...';
-                    iaBox.style.backgroundColor = '#fff7ed'; // Naranja clarito
+                    iaBox.style.backgroundColor = '#fff7ed';
                     iaBox.style.color = '#c2410c';
                 } else if (data.estado_ia === 'listo') {
                     iaBox.innerText = data.oracion_mejorada || 'Sin respuesta';
-                    iaBox.style.backgroundColor = '#d1fae5'; // Verde original
-                    iaBox.style.color = '#064e3b';
+                    iaBox.style.backgroundColor = '#ecfdf5';
+                    iaBox.style.color = '#047857';
                     
-                    // Si la IA terminó, recargamos historial
                     if (ultimoEstadoIA !== 'listo') {
                         cargarHistorial(); 
                     }
                 } else {
                     iaBox.innerText = 'Esperando petición...';
-                    iaBox.style.backgroundColor = '#f3f4f6'; // Gris default
+                    iaBox.style.backgroundColor = '#f9fafb';
                     iaBox.style.color = '#374151';
                 }
                 
@@ -248,47 +404,45 @@
             } catch (e) { console.error('Error polling:', e); }
         }, 500);
 
-        // --- FUNCIONES DEL HISTORIAL CORREGIDAS ---
+        // --- FUNCIONES DEL HISTORIAL ---
         async function cargarHistorial() {
             const contenedor = document.getElementById('history-list');
             
             try {
                 const res = await fetch('/api/historial');
                 
-                // Si la sesión expiró (401), redirigir
                 if (res.status === 401) {
                     window.location.href = '/';
                     return;
                 }
 
                 const historial = await res.json();
-                
-                // Limpiar el "Cargando..."
                 contenedor.innerHTML = ''; 
                 
-                // CASO 1: ARRAY VACÍO (Aquí estaba el problema visual)
                 if (!historial || historial.length === 0) {
                     contenedor.innerHTML = `
-                        <div style="text-align:center; color:#9ca3af; padding:30px; display:flex; flex-direction:column; align-items:center; gap:10px;">
-                            <i data-lucide="inbox" style="width:32px; height:32px; opacity:0.5;"></i>
+                        <div style="text-align:center; color:#9ca3af; padding:40px 20px; display:flex; flex-direction:column; align-items:center; gap:12px;">
+                            <i data-lucide="inbox" style="width:40px; height:40px; opacity:0.3;"></i>
                             <span style="font-size:14px;">No hay historial aún</span>
                         </div>`;
                     lucide.createIcons();
                     return;
                 }
 
-                // CASO 2: HAY MENSAJES
                 historial.forEach(item => {
                     const div = document.createElement('div');
                     div.className = 'history-item';
+                    
+                    // Estructura mejorada: Mensaje arriba, Pie de pagina (Fecha + Icono) abajo
                     div.innerHTML = `
-                        <div style="padding-right: 20px;">${item.mensaje}</div>
-                        <div style="font-size: 11px; color: #9ca3af; margin-top: 8px; text-align: right;">
-                            ${item.fecha}
+                        <div class="history-message-text">${item.mensaje}</div>
+                        
+                        <div class="history-item-footer">
+                            <span class="history-date">${item.fecha}</span>
+                            <span class="history-delete" onclick="eliminarHistorial(${item.id})" title="Eliminar">
+                                <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+                            </span>
                         </div>
-                        <span class="history-delete" onclick="eliminarHistorial(${item.id})">
-                            <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
-                        </span>
                     `;
                     contenedor.appendChild(div);
                 });
@@ -301,24 +455,52 @@
             }
         }
 
-        async function eliminarHistorial(id) {
-            // Confirmación simple
-            if(!confirm("¿Borrar mensaje?")) return;
+        // --- LÓGICA MODAL ---
+        let idParaBorrar = null;
+        const modal = document.getElementById('deleteModal');
+
+        function eliminarHistorial(id) {
+            idParaBorrar = id;
+            modal.classList.add('open');
+        }
+
+        function cerrarModal() {
+            modal.classList.remove('open');
+            idParaBorrar = null;
+        }
+
+        async function confirmarBorrado() {
+            if (idParaBorrar === null) return;
+
+            const btnConfirm = document.querySelector('.btn-delete-confirm');
+            const textoOriginal = btnConfirm.innerText;
+            btnConfirm.innerText = "Borrando...";
+            btnConfirm.disabled = true;
 
             try {
-                const res = await fetch(`/api/historial/${id}`, { method: 'DELETE' });
+                const res = await fetch(`/api/historial/${idParaBorrar}`, { method: 'DELETE' });
                 const data = await res.json();
                 
                 if (data.success) {
-                    cargarHistorial(); // Recargar visualmente
+                    cargarHistorial(); 
+                    cerrarModal();    
                 } else {
-                    alert("No se pudo borrar: " + (data.message || "Error desconocido"));
+                    alert("Error: " + (data.message || "No se pudo borrar"));
+                    cerrarModal();
                 }
             } catch (error) {
                 console.error(error);
-                alert("Error de conexión al borrar");
+                alert("Error de conexión");
+                cerrarModal();
+            } finally {
+                btnConfirm.innerText = textoOriginal;
+                btnConfirm.disabled = false;
             }
         }
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) cerrarModal();
+        });
 
         async function accion(tipo) {
             try {
@@ -328,17 +510,13 @@
                     body: JSON.stringify({ tipo: tipo })
                 });
                 
-                if (!res.ok) {
-                    const err = await res.json();
-                    console.error("Error del servidor:", err);
-                    if(res.status === 401) alert("Su sesión ha expirado, por favor inicie sesión nuevamente.");
+                if (!res.ok && res.status === 401) {
+                    alert("Sesión expirada.");
+                    window.location.href = '/';
                 }
-            } catch (e) { 
-                console.error("Error de red:", e); 
-            }
+            } catch (e) { console.error("Error de red:", e); }
         }
 
-        // Cargar historial apenas carga la página
         document.addEventListener('DOMContentLoaded', cargarHistorial);
     </script>
 </body>

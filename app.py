@@ -10,8 +10,7 @@ import threading
 from flask import Flask, render_template, Response, jsonify, request, session, redirect, url_for
 from dotenv import load_dotenv
 
-# --- IMPORTAMOS LA BASE DE DATOS Y MODELOS ---
-# Asegúrate de que models.py esté en la misma carpeta
+
 from Models.UserModels import db, crear_usuario, autenticar_usuario
 from Models.HistorialModels import guardar_historial, borrar_mensaje, HistorialMensaje
 load_dotenv()
@@ -152,9 +151,9 @@ Oración mejorada:"""
         estado_app["estado_ia"] = "error"
 
 def generar_frames():
-    cap = cv2.VideoCapture(0) 
+    cap = cv2.VideoCapture(2) 
     if not cap.isOpened():
-        cap = cv2.VideoCapture(2)
+        cap = cv2.VideoCapture(0)
         if not cap.isOpened(): return
     
     while True:
