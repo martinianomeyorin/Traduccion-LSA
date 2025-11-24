@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crear Usuario - USAL</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: linear-gradient(135deg, #00683e 0%, #00A859 100%); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }
+        .register-container { background: #e8e8e8; border-radius: 16px; padding: 50px 60px; width: 100%; max-width: 550px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3); }
+        .logo-section { text-align: center; margin-bottom: 40px; }
+        .logo-section img { height: 80px; margin-bottom: 10px; }
+        h1 { color: #00683e; font-size: 1.8rem; font-weight: 700; text-align: center; margin-bottom: 40px; }
+        .form-group { margin-bottom: 20px; }
+        input { width: 100%; padding: 14px 16px; border: 1px solid #ccc; border-radius: 8px; font-size: 0.95rem; font-family: 'Inter', sans-serif; background: white; transition: border-color 0.3s; }
+        input:focus { outline: none; border-color: #00683e; }
+        .btn-register { width: 100%; padding: 15px; background-color: #00683e; color: white; border: none; border-radius: 8px; font-size: 1.05rem; font-weight: 600; cursor: pointer; margin-top: 10px; transition: background-color 0.3s; }
+        .btn-register:hover { background-color: #004d2e; }
+        .login-link { margin-top: 20px; text-align: center; }
+        .login-link a { color: #00683e; font-weight: 600; text-decoration: underline; }
+        @media (max-width: 600px) { .register-container { padding: 40px 30px; } h1 { font-size: 1.5rem; } }
+    </style>
+</head>
+<body>
+    <div class="register-container">
+        <div class="logo-section">
+            <img src="../static/images/usal.png" alt="Logo USAL">
+        </div>
+
+        <h1>Crear Usuario</h1>
+
+        <form id="registerForm">
+            <!-- Nombre de Usuario -->
+            <div class="form-group">
+                <input type="text" id="username" placeholder="Nombre de Usuario" required autocomplete="username">
+            </div>
+
+            <!-- Correo electrónico -->
+            <div class="form-group">
+                <input type="email" id="email" placeholder="Correo electrónico" required autocomplete="email">
+            </div>
+
+            <!-- Contraseña -->
+            <div class="form-group">
+                <input type="password" id="password" placeholder="Contraseña" required autocomplete="new-password">
+            </div>
+
+            <!-- Botón Registrar -->
+            <button type="submit" class="btn-register">Registrar</button>
+        </form>
+
+        <div class="login-link">
+             ¿Ya tienes cuenta? <a href="/">Iniciar Sesión</a>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('registerForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const btn = document.querySelector('.btn-register');
+
+            // Validación básica
+            if (password.length < 6) {
+                alert('La contraseña debe tener al menos 6 caracteres');
+                return;
+            }
+
+            try {
+                btn.disabled = true;
+                btn.innerText = "Registrando...";
+
+                // 1. Conexión con el backend (app.py)
+                const res = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, email, password })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    alert('¡Usuario registrado exitosamente!\nAhora puede iniciar sesión.');
+                    window.location.href = '/'; 
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } catch (error) {
+                console.error(error);
+                alert('Error de conexión con el servidor.');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Registrar";
+            }
+        });
+    </script>
+</body>
+</html>

@@ -35,12 +35,68 @@
             height: 60px;
         }
 
+        /* ESTILOS DEL MENÚ DESPLEGABLE (NUEVO) */
+        .user-menu-wrapper {
+            position: relative;
+            cursor: pointer;
+            user-select: none;
+        }
+
         .user-info {
             display: flex;
             align-items: center;
             gap: 12px;
             font-weight: 500;
             font-size: 15px;
+            padding: 5px 10px;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+        
+        .user-info:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .dropdown-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            margin-top: 5px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            min-width: 180px;
+            overflow: hidden;
+            z-index: 1000;
+            border: 1px solid #e5e7eb;
+        }
+
+        .dropdown-menu.show {
+            display: block;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            color: #374151;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .dropdown-item:hover {
+            background-color: #f3f4f6;
+            color: #d32f2f;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .logo-center {
@@ -289,33 +345,38 @@
     </style>
 </head>
 <body>
-    <!-- HEADER -->
     <header>
-        <div class="user-info">
-            <i data-lucide="user" style="width: 22px; height: 22px;"></i>
-            <span>Martiniano Meyorin</span>
+        <div class="user-menu-wrapper" id="userMenuBtn">
+            <div class="user-info">
+                <i data-lucide="user" style="width: 22px; height: 22px;"></i>
+                <span>{{ username if username else 'Usuario' }}</span>
+                <i data-lucide="chevron-down" style="width: 16px; height: 16px;"></i>
+            </div>
+
+            <div class="dropdown-menu" id="userDropdown">
+                <a href="/logout" class="dropdown-item">
+                    <i data-lucide="log-out" style="width: 18px; height: 18px;"></i>
+                    Cerrar sesión
+                </a>
+            </div>
         </div>
         
         <div class="logo-center">
             <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo" style="height: 40px;">
         </div>
         
-        <div style="width: 150px;"></div>
+        <div style="width: 180px;"></div>
     </header>
 
-    <!-- CONTENIDO PRINCIPAL -->
     <div class="main-container">
         <div class="content-wrapper">
-            <!-- COLUMNA IZQUIERDA -->
             <div class="left-column">
                 <h1>🤟 Traductor LSA (Tiempo Real)</h1>
 
-                <!-- VIDEO -->
                 <div class="video-container">
                     <img id="video-stream" src="{{ url_for('video_feed') }}" alt="Cámara">
                 </div>
 
-                <!-- ESTADÍSTICAS -->
                 <div class="stats-bar">
                     <div class="stat-item">
                         👋 Manos: <strong id="manos-count">0</strong>
@@ -328,7 +389,6 @@
                     </div>
                 </div>
 
-                <!-- BOTONES -->
                 <div class="button-row">
                     <button class="btn btn-espacio" onclick="accion('espacio')">
                         Espacio
@@ -343,7 +403,6 @@
                     </button>
                 </div>
 
-                <!-- ORACIÓN DETECTADA -->
                 <div class="output-section">
                     <label class="output-label">Oración detectada:</label>
                     <div class="output-box output-primitive" id="oracion-detectada">
@@ -351,7 +410,6 @@
                     </div>
                 </div>
 
-                <!-- TRADUCCIÓN IA -->
                 <div class="output-section">
                     <label class="output-label">Traducción IA:</label>
                     <div class="output-box output-ia" id="traduccion-ia">
@@ -361,7 +419,6 @@
             
             </div>
 
-            <!-- HISTORIAL (DERECHA) -->
             <aside class="history-sidebar">
                 <div class="history-header">
                     Historial de Mensajes
@@ -402,6 +459,21 @@
         // Inicializar iconos de Lucide
         lucide.createIcons();
 
+        // --- LÓGICA DEL MENÚ DE USUARIO (NUEVO) ---
+        const menuBtn = document.getElementById('userMenuBtn');
+        const dropdown = document.getElementById('userDropdown');
+
+        menuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdown.classList.toggle('show');
+        });
+
+        window.addEventListener('click', () => {
+            if (dropdown.classList.contains('show')) {
+                dropdown.classList.remove('show');
+            }
+        });
+
         // Actualizar datos desde el backend
         setInterval(async () => {
             try {
@@ -413,8 +485,6 @@
                 
                 const data = await res.json();
                 
-                console.log('Datos recibidos:', data); // DEBUG
-
                 // Actualizar stats
                 document.getElementById('manos-count').innerText = data.manos || 0;
                 document.getElementById('confianza-value').innerText = (data.confianza || 0) + '%';

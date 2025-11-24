@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar Sesión - USAL</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #00683e 0%, #00A859 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .login-container {
+            background: #e8e8e8;
+            border-radius: 16px;
+            padding: 50px 60px;
+            width: 100%;
+            max-width: 550px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+        .logo-section {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .logo-section img {
+            height: 80px;
+            width: auto;
+            margin-bottom: 10px;
+        }
+        h1 { color: #00683e; font-size: 1.8rem; font-weight: 700; text-align: center; margin-bottom: 40px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; color: #333; font-size: 0.95rem; font-weight: 500; margin-bottom: 8px; }
+        .password-label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .forgot-password { color: #333; font-size: 0.9rem; text-decoration: underline; cursor: pointer; }
+        .forgot-password:hover { color: #00683e; }
+        input[type="text"], input[type="email"], input[type="password"] {
+            width: 100%; padding: 14px 16px; border: 1px solid #ccc; border-radius: 8px; font-size: 1rem; font-family: 'Inter', sans-serif; background: white; transition: border-color 0.3s;
+        }
+        input:focus { outline: none; border-color: #00683e; }
+        .btn-login {
+            width: 100%; padding: 15px; background-color: #00683e; color: white; border: none; border-radius: 8px; font-size: 1.05rem; font-weight: 600; cursor: pointer; margin-top: 30px; transition: background-color 0.3s;
+        }
+        .btn-login:hover { background-color: #004d2e; }
+        .btn-login:active { transform: scale(0.98); }
+        .register-section { text-align: center; margin-top: 20px; font-size: 0.95rem; color: #333; }
+        .register-link { color: #333; font-weight: 600; text-decoration: underline; cursor: pointer; margin-left: 5px; }
+        .register-link:hover { color: #00683e; }
+        @media (max-width: 600px) {
+            .login-container { padding: 40px 30px; }
+            h1 { font-size: 1.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        
+        <div class="logo-section">
+            <!-- Usamos ruta relativa por si acaso -->
+            <img src="../static/images/usal.png" alt="Logo USAL">
+        </div>
+
+        <h1>Iniciar Sesión</h1>
+
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="email">Correo electrónico o usuario</label>
+                <input type="text" id="email" name="email" required autocomplete="username">
+            </div>
+
+            <div class="form-group">
+                <div class="password-label-row">
+                    <label for="password">Contraseña</label>
+                    <a href="#" class="forgot-password" onclick="forgotPassword(event)">Olvidé mi contraseña</a>
+                </div>
+                <input type="password" id="password" name="password" required autocomplete="current-password">
+            </div>
+
+            <button type="submit" class="btn-login">Iniciar Sesión</button>
+        </form>
+
+        <div class="register-section">
+            No tiene cuenta?
+            <!-- CORRECCIÓN: Quitamos el onclick para que el href funcione -->
+            <a href="/register" class="register-link">Registrarse</a>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const btn = document.querySelector('.btn-login');
+    
+            try {
+                btn.disabled = true;
+                btn.innerText = "Verificando...";
+    
+                // Hacemos la petición REAL al backend
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email, password: password })
+                });
+    
+                const data = await res.json();
+    
+                if (res.ok && data.success) {
+                    // Si el backend dice OK, entonces redirigimos
+                    window.location.href = "/dashboard";
+                } else {
+                    alert('Error: ' + (data.message || 'Credenciales incorrectas'));
+                }
+            } catch (error) {
+                console.error(error);
+                alert('Error de conexión con el servidor.');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Iniciar Sesión";
+            }
+        });
+    
+        function forgotPassword(e) {
+            e.preventDefault();
+            alert('Funcionalidad no implementada aún.');
+        }
+    </script>
+</body>
+</html>

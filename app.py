@@ -7,21 +7,48 @@ import time
 import requests
 import os
 import threading
-from flask import Flask, render_template, Response, jsonify, request
+from flask import Flask, render_template, Response, jsonify, request, session, redirect, url_for
 from dotenv import load_dotenv
+
+# --- IMPORTAMOS LA BASE DE DATOS Y MODELOS ---
+# Asegúrate de que models.py esté en la misma carpeta
+from UserModels import db, crear_usuario, autenticar_usuario
 
 load_dotenv()
 
 app = Flask(__name__)
 
-# ============= CONFIGURACIÓN GLOBAL =============
+# ============= CONFIGURACIÓN DE BASE DE DATOS =============
+app.secret_key = "marti123"
+
+DB_USER = "postgres"
+DB_PASS = "marti123"
+DB_HOST = "localhost"
+DB_PORT = "5432"
+DB_NAME = "LSA"
+
+app.config['SQLALCHEMY_DATABASE_URI'] = f"postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+
+db.init_app(app)
+
+with app.app_context():
+    db.create_all() 
+    print("💾 Conectado a PostgreSQL (Base: LSA).")
+
+# ============= CONFIGURACIÓN GLOBAL IA =============
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 print("🚀 Cargando modelo...")
-model = tf.keras.models.load_model("modelo_gestos_v2.h5")
-with open("labels_v2.pkl", "rb") as f:
-    etiquetas = pickle.load(f)
-print(f"✅ Modelo cargado: {len(etiquetas)} clases")
+try:
+    model = tf.keras.models.load_model("modelo_gestos_v2.h5")
+    with open("labels_v2.pkl", "rb") as f:
+        etiquetas = pickle.load(f)
+    print(f"✅ Modelo cargado: {len(etiquetas)} clases")
+except Exception as e:
+    print(f"❌ Error cargando modelo: {e}")
+    model = None
+    etiquetas = []
 
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
@@ -46,19 +73,17 @@ variables_control = {
     "ultima_palabra": None,
     "contador_misma_palabra": 0,
     "tiempo_ultima_deteccion": 0,
-    "UMBRAL_CONFIANZA": 0.75,  # BAJADO de 0.90 a 0.75
+    "UMBRAL_CONFIANZA": 0.75,
     "TIEMPO_ESPERA": 1.5
 }
 
 def extraer_landmarks_mano(hand_landmarks):
-    """Extrae los 63 valores (21 puntos × 3 coordenadas) de una mano"""
     puntos = []
     for landmark in hand_landmarks.landmark:
         puntos.extend([landmark.x, landmark.y, landmark.z])
     return puntos
 
 def consultar_chatgpt_async():
-    """Lógica de ChatGPT en hilo separado"""
     if not estado_app["palabras"]:
         estado_app["estado_ia"] = "error"
         return
@@ -66,20 +91,14 @@ def consultar_chatgpt_async():
     oracion_primitiva = " ".join(estado_app["palabras"]).strip()
     estado_app["estado_ia"] = "cargando"
     
-    print(f"📤 Consultando ChatGPT: '{oracion_primitiva}'")
-    
     headers = {
         "Content-Type": "application/json", 
         "Authorization": f"Bearer {OPENAI_API_KEY}"
     }
     
     prompt = f"""Se te pasarán oraciones primitivas, carentes de conjugaciones, conectores y artículos. 
-Debes transformar esa oración y darle un sentido más natural, conservando la idea principal que representan las palabras originales, 
-pero si es necesario añade también sustantivos y verbos para conservar naturalidad. 
-Solo me tenés que pasar una oración resultante y además tiene que estar en la lengua argentina (argentinismos, voseo, etc).
-
+Debes transformar esa oración y darle un sentido más natural en español argentino.
 Oración primitiva: {oracion_primitiva}
-
 Oración mejorada:"""
     
     data = {
@@ -93,41 +112,26 @@ Oración mejorada:"""
     }
     
     try:
-        response = requests.post(
-            "https://api.openai.com/v1/chat/completions", 
-            headers=headers, 
-            json=data, 
-            timeout=10
-        )
-        
+        response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=data, timeout=10)
         if response.status_code == 200:
             res = response.json()
-            mejorada = res['choices'][0]['message']['content'].strip()
-            mejorada = mejorada.replace("Oración mejorada:", "").strip()
+            mejorada = res['choices'][0]['message']['content'].strip().replace("Oración mejorada:", "").strip()
             estado_app["oracion_mejorada"] = mejorada
             estado_app["estado_ia"] = "listo"
-            print(f"✅ ChatGPT: '{mejorada}'")
         else:
-            print(f"❌ Error ChatGPT: {response.status_code}")
             estado_app["estado_ia"] = "error"
     except Exception as e:
-        print(f"❌ Error ChatGPT: {e}")
         estado_app["estado_ia"] = "error"
 
-# ============= GENERADOR DE VIDEO =============
 def generar_frames():
-    cap = cv2.VideoCapture(2)
-    
+    cap = cv2.VideoCapture(2) 
     if not cap.isOpened():
-        print("❌ No se pudo abrir la cámara")
-        return
-    
-    print("✅ Cámara iniciada")
+        cap = cv2.VideoCapture(1)
+        if not cap.isOpened(): return
     
     while True:
         success, frame = cap.read()
-        if not success:
-            break
+        if not success: break
 
         img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = hands.process(img_rgb)
@@ -137,157 +141,151 @@ def generar_frames():
 
         if results.multi_hand_landmarks and results.multi_handedness:
             estado_app["manos_detectadas"] = len(results.multi_hand_landmarks)
-            num_manos = len(results.multi_hand_landmarks)
-
-            # Dibujar landmarks
             for hand_landmarks in results.multi_hand_landmarks:
-                mp_drawing.draw_landmarks(
-                    frame, hand_landmarks, mp_hands.HAND_CONNECTIONS,
-                    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=3),
-                    mp_drawing.DrawingSpec(color=(255, 0, 0), thickness=2)
-                )
+                mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-            # Extracción de datos (2 manos)
-            mano_izquierda = [0.0] * 63
-            mano_derecha = [0.0] * 63
-            tiene_izquierda = 0
-            tiene_derecha = 0
+            if model is not None:
+                mano_izquierda = [0.0] * 63
+                mano_derecha = [0.0] * 63
+                tiene_izquierda = 0
+                tiene_derecha = 0
 
-            for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
-                label = handedness.classification[0].label
-                landmarks = extraer_landmarks_mano(hand_landmarks)
+                for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
+                    label = handedness.classification[0].label
+                    landmarks = extraer_landmarks_mano(hand_landmarks)
+                    if label == "Right":
+                        mano_derecha = landmarks
+                        tiene_derecha = 1
+                    else:
+                        mano_izquierda = landmarks
+                        tiene_izquierda = 1
                 
-                if label == "Right":
-                    mano_derecha = landmarks
-                    tiene_derecha = 1
-                else:
-                    mano_izquierda = landmarks
-                    tiene_izquierda = 1
-            
-            fila_combinada = mano_izquierda + mano_derecha + [tiene_izquierda, tiene_derecha]
-            
-            if len(fila_combinada) == 128:
-                try:
-                    prediccion = model.predict(np.array([fila_combinada]), verbose=0)[0]
-                    prob = np.max(prediccion)
-                    
-                    # Actualizar confianza
-                    estado_app["confianza_actual"] = int(prob * 100)
-                    
-                    if prob >= variables_control["UMBRAL_CONFIANZA"]:
-                        idx = np.argmax(prediccion)
-                        mejor_prediccion = etiquetas[idx]
-                        mensaje_debug = f"{mejor_prediccion} ({int(prob*100)}%)"
-
-                        tiempo_actual = time.time()
-
-                        # Lógica de estabilidad
-                        if variables_control["ultima_palabra"] != mejor_prediccion:
-                            variables_control["contador_misma_palabra"] = 1
-                            variables_control["ultima_palabra"] = mejor_prediccion
-                        else:
-                            variables_control["contador_misma_palabra"] += 1
+                fila_combinada = mano_izquierda + mano_derecha + [tiene_izquierda, tiene_derecha]
+                
+                if len(fila_combinada) == 128:
+                    try:
+                        prediccion = model.predict(np.array([fila_combinada]), verbose=0)[0]
+                        prob = np.max(prediccion)
+                        estado_app["confianza_actual"] = int(prob * 100)
                         
-                        # Mostrar progreso de estabilidad
-                        progreso = min(variables_control["contador_misma_palabra"], 10)
-                        mensaje_debug += f" [{progreso}/10]"
-                        
-                        # Agregar palabra cuando sea estable
-                        if (variables_control["contador_misma_palabra"] >= 10 and 
-                           (tiempo_actual - variables_control["tiempo_ultima_deteccion"]) > variables_control["TIEMPO_ESPERA"]):
-                            
-                            estado_app["palabras"].append(mejor_prediccion)
-                            estado_app["ultima_deteccion"] = mejor_prediccion
-                            
-                            variables_control["tiempo_ultima_deteccion"] = tiempo_actual
-                            variables_control["contador_misma_palabra"] = 0
-                            
-                            print(f"✅ Palabra agregada: {mejor_prediccion}")
+                        if prob >= variables_control["UMBRAL_CONFIANZA"]:
+                            idx = np.argmax(prediccion)
+                            mejor_prediccion = etiquetas[idx]
+                            mensaje_debug = f"{mejor_prediccion} ({int(prob*100)}%)"
+                            tiempo_actual = time.time()
 
-                except Exception as e:
-                    print(f"❌ Error predicción: {e}")
-                    mensaje_debug = f"Error: {str(e)}"
+                            if variables_control["ultima_palabra"] != mejor_prediccion:
+                                variables_control["contador_misma_palabra"] = 1
+                                variables_control["ultima_palabra"] = mejor_prediccion
+                            else:
+                                variables_control["contador_misma_palabra"] += 1
+                            
+                            if (variables_control["contador_misma_palabra"] >= 10 and 
+                               (tiempo_actual - variables_control["tiempo_ultima_deteccion"]) > variables_control["TIEMPO_ESPERA"]):
+                                estado_app["palabras"].append(mejor_prediccion)
+                                estado_app["ultima_deteccion"] = mejor_prediccion
+                                variables_control["tiempo_ultima_deteccion"] = tiempo_actual
+                                variables_control["contador_misma_palabra"] = 0
+                    except Exception: pass
+            else:
+                 mensaje_debug = "Modelo no cargado"
         else:
             variables_control["contador_misma_palabra"] = 0
             variables_control["ultima_palabra"] = None
 
-        # Dibujar info en video
-        cv2.putText(frame, mensaje_debug, (10, 30), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        
-        # Mostrar número de manos
-        cv2.putText(frame, f"Manos: {estado_app['manos_detectadas']}", (10, 60), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
-        
-        # Codificar
+        cv2.putText(frame, mensaje_debug, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         ret, buffer = cv2.imencode('.jpg', frame)
         frame = buffer.tobytes()
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
-# ============= RUTAS FLASK =============
+# ============= RUTAS =============
+
 @app.route('/')
-def index():
-    return render_template('index.html')
+def login_page():
+    if 'user_email' in session:
+        return redirect(url_for('dashboard'))
+    return render_template('login.html')
+
+@app.route('/register')
+def register_page():
+    return render_template('register.html')
+
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    data = request.json
+    identificador = data.get('email')
+    password = data.get('password')
+    exito, usuario = autenticar_usuario(identificador, password)
+    if exito:
+        session['user_email'] = usuario.email
+        session['username'] = usuario.nombre
+        return jsonify({"success": True, "message": "Login exitoso"})
+    else:
+        return jsonify({"success": False, "message": "Credenciales inválidas"}), 401
+
+@app.route('/api/register', methods=['POST'])
+def api_register():
+    data = request.json
+    nombre = data.get('username') 
+    email = data.get('email')
+    password = data.get('password')
+    
+    if not nombre or not email or not password:
+        return jsonify({"success": False, "message": "Faltan datos"}), 400
+    
+    # Intenta crear usuario
+    exito, mensaje = crear_usuario(nombre, email, password)
+    
+    if exito:
+        return jsonify({"success": True, "message": mensaje})
+    else:
+        # Esto te dirá por qué falló (ej. email duplicado)
+        return jsonify({"success": False, "message": mensaje}), 400
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login_page'))
+
+@app.route('/dashboard')
+def dashboard():
+    if 'user_email' not in session:
+        return redirect(url_for('login_page'))
+    return render_template('dashboard.html', username=session.get('username'))
 
 @app.route('/video_feed')
 def video_feed():
-    return Response(generar_frames(), 
-                   mimetype='multipart/x-mixed-replace; boundary=frame')
+    return Response(generar_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/get_data')
 def get_data():
-    # IMPORTANTE: Join con espacio para formar oración legible
     oracion_raw = " ".join(estado_app["palabras"]) if estado_app["palabras"] else "..."
-    
     return jsonify({
         "palabras": estado_app["palabras"],
-        "oracion_raw": oracion_raw,
         "oracion_mejorada": estado_app["oracion_mejorada"],
         "estado_ia": estado_app["estado_ia"],
         "manos": estado_app["manos_detectadas"],
         "confianza": estado_app["confianza_actual"],
-        "ultima_signo": estado_app["ultima_deteccion"]
+        "ultima_signo": estado_app["ultima_deteccion"],
+        "oracion_raw": oracion_raw
     })
 
 @app.route('/accion', methods=['POST'])
 def accion():
     req = request.json
     tipo = req.get('tipo')
-    
-    print(f"🔧 Acción recibida: {tipo}")
-    
     if tipo == 'limpiar':
         estado_app["palabras"] = []
         estado_app["oracion_mejorada"] = ""
         estado_app["estado_ia"] = "idle"
         estado_app["ultima_deteccion"] = "-"
-        variables_control["ultima_palabra"] = None
         variables_control["contador_misma_palabra"] = 0
-        print("🗑️ Datos limpiados")
-        
     elif tipo == 'espacio':
         estado_app["palabras"].append(" ")
-        print("⎵ Espacio agregado")
-        
     elif tipo == 'mejorar':
         if estado_app["palabras"]:
             threading.Thread(target=consultar_chatgpt_async).start()
-            print("🤖 Mejorando con IA...")
-        else:
-            print("⚠️ No hay palabras para mejorar")
-        
     return jsonify({"status": "ok"})
 
 if __name__ == '__main__':
-    print("\n" + "="*60)
-    print("🌐 SERVIDOR WEB LSA INICIADO")
-    print("="*60)
-    print(f"📊 Clases: {len(etiquetas)}")
-    print(f"🎯 Umbral confianza: {variables_control['UMBRAL_CONFIANZA']*100}%")
-    print(f"⏱️ Tiempo espera: {variables_control['TIEMPO_ESPERA']}s")
-    print(f"🤖 ChatGPT: {'✅' if OPENAI_API_KEY else '❌'}")
-    print("\n🌐 Abrir en navegador: http://localhost:5000")
-    print("="*60 + "\n")
-    
     app.run(host='0.0.0.0', port=5000, debug=False)
