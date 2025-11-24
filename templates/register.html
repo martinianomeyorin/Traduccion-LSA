@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Crear Usuario - USAL</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Inter', sans-serif; background: linear-gradient(135deg, #066C4D 0%, #066C4D 100%); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }
@@ -31,22 +33,21 @@
         <h1>Crear Usuario</h1>
 
         <form id="registerForm">
-            <!-- Nombre de Usuario -->
             <div class="form-group">
                 <input type="text" id="username" placeholder="Nombre de Usuario" required autocomplete="username">
             </div>
 
-            <!-- Correo electrónico -->
             <div class="form-group">
                 <input type="email" id="email" placeholder="Correo electrónico" required autocomplete="email">
             </div>
 
-            <!-- Contraseña -->
             <div class="form-group">
                 <input type="password" id="password" placeholder="Contraseña" required autocomplete="new-password">
+                <small style="color: #666; font-size: 0.8rem; margin-top: 5px; display: block;">
+                    Debe tener mayúscula, carácter especial y min. 6 caracteres.
+                </small>
             </div>
 
-            <!-- Botón Registrar -->
             <button type="submit" class="btn-register">Registrar</button>
         </form>
 
@@ -55,7 +56,32 @@
         </div>
     </div>
 
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+
     <script>
+        function showNotification(message, type) {
+            let bgColor;
+            if (type === 'success') {
+                bgColor = "linear-gradient(to right, #00b09b, #96c93d)"; // Verde brillante
+            } else {
+                bgColor = "linear-gradient(to right, #ff5f6d, #ffc371)"; // Rojo/Naranja error
+            }
+
+            Toastify({
+                text: message,
+                duration: 4000, 
+                gravity: "top", 
+                position: "right", 
+                stopOnFocus: true, 
+                style: {
+                    background: bgColor,
+                    borderRadius: "8px",
+                    fontFamily: "'Inter', sans-serif"
+                },
+                onClick: function(){} 
+            }).showToast();
+        }
+
         document.getElementById('registerForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
@@ -63,18 +89,31 @@
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             const btn = document.querySelector('.btn-register');
-
-            // Validación básica
-            if (password.length < 6) {
-                alert('La contraseña debe tener al menos 6 caracteres');
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                showNotification('El correo electrónico no es válido (debe contener "@").', 'error');
                 return;
             }
 
+            if (password.length < 6) {
+                showNotification('La contraseña debe tener al menos 6 caracteres.', 'error');
+                return;
+            }
+
+            const hasUpperCase = /[A-Z]/.test(password);
+            if (!hasUpperCase) {
+                showNotification('La contraseña debe contener al menos una letra mayúscula.', 'error');
+                return;
+            }
+            const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+            if (!hasSpecialChar) {
+                showNotification('La contraseña debe contener al menos un carácter especial (ej: ! @ # $).', 'error');
+                return;
+            }
             try {
                 btn.disabled = true;
                 btn.innerText = "Registrando...";
 
-                // 1. Conexión con el backend (app.py)
                 const res = await fetch('/api/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -84,17 +123,31 @@
                 const data = await res.json();
 
                 if (data.success) {
-                    alert('¡Usuario registrado exitosamente!\nAhora puede iniciar sesión.');
-                    window.location.href = '/'; 
+                    showNotification('¡Usuario registrado exitosamente! Redirigiendo...', 'success');
+                    
+                    setTimeout(() => {
+                        window.location.href = '/'; 
+                    }, 1500);
+                    
                 } else {
-                    alert('Error: ' + data.message);
+                    showNotification('Error: ' + data.message, 'error');
                 }
             } catch (error) {
                 console.error(error);
-                alert('Error de conexión con el servidor.');
+                showNotification('Error de conexión con el servidor.', 'error');
             } finally {
-                btn.disabled = false;
-                btn.innerText = "Registrar";
+                const btnRef = document.querySelector('.btn-register'); 
+                if (btnRef.innerText !== "Registrando...") {
+                     btn.disabled = false;
+                     btn.innerText = "Registrar";
+                } else {
+                    setTimeout(() => {
+                        if (!window.location.href.endsWith('/')) { 
+                             btn.disabled = false;
+                             btn.innerText = "Registrar";
+                        }
+                     }, 500);
+                }
             }
         });
     </script>

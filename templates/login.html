@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Iniciar Sesión - USAL</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -61,7 +63,6 @@
     <div class="login-container">
         
         <div class="logo-section">
-            <!-- Usamos ruta relativa por si acaso -->
             <img src="../static/images/usal.png" alt="Logo USAL">
         </div>
 
@@ -86,12 +87,38 @@
 
         <div class="register-section">
             No tiene cuenta?
-            <!-- CORRECCIÓN: Quitamos el onclick para que el href funcione -->
             <a href="/register" class="register-link">Registrarse</a>
         </div>
     </div>
 
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+
     <script>
+        // Función auxiliar para mostrar notificaciones (Igual que en registro)
+        function showNotification(message, type) {
+            let bgColor;
+            if (type === 'success') {
+                bgColor = "linear-gradient(to right, #00b09b, #96c93d)"; // Verde
+            } else if (type === 'error') {
+                bgColor = "linear-gradient(to right, #ff5f6d, #ffc371)"; // Rojo
+            } else {
+                bgColor = "linear-gradient(to right, #00b4db, #0083b0)"; // Azul (Info)
+            }
+
+            Toastify({
+                text: message,
+                duration: 3000,
+                gravity: "top",
+                position: "right",
+                stopOnFocus: true,
+                style: {
+                    background: bgColor,
+                    borderRadius: "8px",
+                    fontFamily: "'Inter', sans-serif"
+                }
+            }).showToast();
+        }
+
         document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
@@ -103,7 +130,6 @@
                 btn.disabled = true;
                 btn.innerText = "Verificando...";
     
-                // Hacemos la petición REAL al backend
                 const res = await fetch('/api/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -113,23 +139,36 @@
                 const data = await res.json();
     
                 if (res.ok && data.success) {
-                    // Si el backend dice OK, entonces redirigimos
-                    window.location.href = "/dashboard";
+                    showNotification('Login exitoso. Redirigiendo...', 'success');
+                    setTimeout(() => {
+                        window.location.href = "/dashboard";
+                    }, 1000);
+                    
                 } else {
-                    alert('Error: ' + (data.message || 'Credenciales incorrectas'));
+                    showNotification('Error: ' + (data.message || 'Credenciales incorrectas'), 'error');
                 }
             } catch (error) {
                 console.error(error);
-                alert('Error de conexión con el servidor.');
+                showNotification('Error de conexión con el servidor.', 'error');
             } finally {
-                btn.disabled = false;
-                btn.innerText = "Iniciar Sesión";
+                const btnRef = document.querySelector('.btn-login');
+                if (btnRef.innerText !== "Verificando...") {
+                    btn.disabled = false;
+                    btn.innerText = "Iniciar Sesión";
+                } else {
+                     setTimeout(() => {
+                        if (!window.location.href.endsWith('/dashboard')) { 
+                             btn.disabled = false;
+                             btn.innerText = "Iniciar Sesión";
+                        }
+                     }, 500);
+                }
             }
         });
     
         function forgotPassword(e) {
             e.preventDefault();
-            alert('Funcionalidad no implementada aún.');
+            showNotification('Funcionalidad no implementada aún.', 'info');
         }
     </script>
 </body>
