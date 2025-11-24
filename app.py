@@ -274,6 +274,15 @@ def api_register():
 
 @app.route('/logout')
 def logout():
+    global estado_app, variables_control
+    estado_app["palabras"] = []
+    estado_app["oracion_mejorada"] = ""
+    estado_app["ultima_deteccion"] = "-"
+    estado_app["estado_ia"] = "idle"
+    estado_app["confianza_actual"] = 0
+    estado_app["manos_detectadas"] = 0
+    variables_control["ultima_palabra"] = None
+    variables_control["contador_misma_palabra"] = 0
     session.clear()
     return redirect(url_for('login_page'))
 
