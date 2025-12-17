@@ -319,6 +319,7 @@ def accion():
         
         if tipo == 'limpiar':
             estado_app["palabras"] = []
+            estado_app["confianza_actual"] = ""
             estado_app["oracion_mejorada"] = ""
             estado_app["estado_ia"] = "idle"
             estado_app["ultima_deteccion"] = "-"
