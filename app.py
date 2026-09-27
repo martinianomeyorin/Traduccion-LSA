@@ -4,9 +4,15 @@ Configuración por variables de entorno: SECRET_KEY, DATABASE_URL y OLLAMA_BASE_
 """
 import os
 import pickle
+import re
 import secrets
+import hashlib
+import hmac
+import smtplib
 import threading
 import time
+from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 from pathlib import Path
 
 import cv2
@@ -22,7 +28,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from Models.HistorialModels import HistorialMensaje, borrar_mensaje, guardar_historial
-from Models.UserModels import GoogleAccount, User, autenticar_usuario, crear_usuario, db
+from Models.UserModels import GoogleAccount, PasswordResetCode, User, autenticar_usuario, crear_usuario, db, validar_password
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
@@ -66,6 +72,51 @@ def _state(email):
             "error_ia": "", "camera_error": "", "ultima_palabra": None, "contador": 0, "ultimo_tiempo": 0,
         })
 
+def _now_utc_naive():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+def _hash_reset_code(email, code):
+    secret = app.config["SECRET_KEY"]
+    secret = secret.encode("utf-8") if isinstance(secret, str) else secret
+    payload = f"password-reset:{email}:{code}".encode("utf-8")
+    return hmac.new(secret, payload, hashlib.sha256).hexdigest()
+
+def _send_reset_email(email, code):
+    server = os.getenv("MAIL_SERVER", "").strip()
+    username = os.getenv("MAIL_USERNAME", "").strip()
+    password = os.getenv("MAIL_PASSWORD", "")
+    sender = os.getenv("MAIL_FROM", "").strip() or username
+    if not all((server, username, password, sender)):
+        raise RuntimeError("Falta configurar MAIL_SERVER, MAIL_USERNAME, MAIL_PASSWORD o MAIL_FROM")
+
+    message = EmailMessage()
+    message["Subject"] = "Código para restablecer tu contraseña"
+    message["From"] = sender
+    message["To"] = email
+    message.set_content(
+        "Recibimos una solicitud para restablecer la contraseña de tu cuenta.\n\n"
+        f"Tu código de verificación es: {code}\n\n"
+        "El código vence en 10 minutos y solo se puede usar una vez. "
+        "Si no solicitaste este cambio, podés ignorar este correo."
+    )
+
+    port = int(os.getenv("MAIL_PORT", "587"))
+    use_ssl = os.getenv("MAIL_USE_SSL", "false").lower() == "true"
+    use_tls = os.getenv("MAIL_USE_TLS", "true").lower() == "true"
+    timeout = float(os.getenv("MAIL_TIMEOUT_SECONDS", "20"))
+    if use_ssl:
+        with smtplib.SMTP_SSL(server, port, timeout=timeout) as smtp:
+            smtp.login(username, password)
+            smtp.send_message(message)
+    else:
+        with smtplib.SMTP(server, port, timeout=timeout) as smtp:
+            smtp.ehlo()
+            if use_tls:
+                smtp.starttls()
+                smtp.ehlo()
+            smtp.login(username, password)
+            smtp.send_message(message)
+
 try:
     model = tf.keras.models.load_model(BASE_DIR / "modelo_gestos_v2.h5")
     with (BASE_DIR / "labels_v2.pkl").open("rb") as labels_file:
@@ -91,8 +142,16 @@ def _mejorar_oracion(email, oracion):
         response = requests.post(
             f"{ollama_url}/api/chat",
             json={"model": ollama_model, "stream": False, "messages": [
-                {"role": "system", "content": "Reescribí frases primitivas de Lengua de Señas Argentina como español argentino natural. Conservá el sentido y no agregues información."},
-                {"role": "user", "content": oracion}], "options": {"temperature": 0.4, "num_predict": 150}},
+                {"role": "system", "content": (
+                    "Sos un traductor de palabras reconocidas de Lengua de Señas Argentina a español argentino. "
+                    "La entrada es una secuencia de palabras señadas, no una pregunta sobre el significado de una palabra. "
+                    "Convertí únicamente esa secuencia en una sola oración breve y natural, conservando su significado "
+                    "y agregando solo la gramática indispensable. No expliques la seña ni definas palabras; no agregues "
+                    "contexto, interpretaciones, alternativas, introducciones, listas ni comentarios. Si la secuencia ya "
+                    "es comprensible, repetila con puntuación. Ejemplo: `opaco gracias` → `Opaco, gracias.` "
+                    "Respondé exclusivamente con la oración traducida."
+                )},
+                {"role": "user", "content": oracion}], "options": {"temperature": 0.1, "num_predict": 48}},
             timeout=float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "180")),
         )
         if not response.ok:
@@ -248,15 +307,24 @@ def register_page():
 
 @app.post("/api/login")
 def api_login():
-    data = request.get_json(silent=True) or {}
+    is_json_request = request.is_json
+    data = request.get_json(silent=True) or {} if is_json_request else request.form
     email, password = data.get("email"), data.get("password")
     if not isinstance(email, str) or not isinstance(password, str) or not email.strip() or not password:
+        if not is_json_request:
+            flash("Ingresá tu usuario y contraseña")
+            return redirect(url_for("login_page"))
         return jsonify(success=False, message="Ingresá tu usuario y contraseña"), 400
     success, user = autenticar_usuario(email.strip(), password)
     if not success:
+        if not is_json_request:
+            flash("Credenciales inválidas")
+            return redirect(url_for("login_page"))
         return jsonify(success=False, message="Credenciales inválidas"), 401
     session.clear()
     session.update(user_email=user.email, username=user.nombre)
+    if not is_json_request:
+        return redirect(url_for("dashboard"))
     return jsonify(success=True, message="Login exitoso")
 
 @app.post("/api/register")
@@ -267,10 +335,96 @@ def api_register():
         return jsonify(success=False, message="Completá todos los campos"), 400
     if not name.strip() or not email.strip() or len(name.strip()) > 100 or len(email.strip()) > 255:
         return jsonify(success=False, message="Revisá el nombre y el correo ingresados"), 400
-    if len(password) < 8:
-        return jsonify(success=False, message="La contraseña debe tener al menos 8 caracteres"), 400
+    password_error = validar_password(password)
+    if password_error:
+        return jsonify(success=False, message=password_error), 400
     success, message = crear_usuario(name.strip(), email.strip(), password)
     return jsonify(success=success, message=message), (201 if success else 400)
+
+@app.post("/api/password-reset/request")
+def request_password_reset():
+    data = request.get_json(silent=True) if request.is_json else request.form
+    data = data or {}
+    email = data.get("email")
+    if not isinstance(email, str) or len(email.strip()) > 255 or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email.strip()):
+        return jsonify(success=False, message="Ingresá un correo válido."), 400
+
+    mail_configured = all(os.getenv(key) for key in ("MAIL_SERVER", "MAIL_USERNAME", "MAIL_PASSWORD"))
+    if not mail_configured:
+        return jsonify(success=False, message="El envío de correo todavía no está configurado en el servidor."), 503
+
+    email = email.strip().lower()
+    generic_message = "Si existe una cuenta con ese correo, enviaremos un código para restablecer la contraseña."
+    user = User.query.filter_by(email=email).first()
+    if user is None:
+        return jsonify(success=True, message=generic_message)
+
+    now = _now_utc_naive()
+    reset = PasswordResetCode.query.filter_by(email=email).first()
+    if reset and now - reset.last_sent_at < timedelta(seconds=60):
+        return jsonify(success=True, message=generic_message)
+
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    if reset is None:
+        reset = PasswordResetCode(email=email, code_hash=_hash_reset_code(email, code), expires_at=now + timedelta(minutes=10), last_sent_at=now, attempts=0)
+        db.session.add(reset)
+    else:
+        reset.code_hash = _hash_reset_code(email, code)
+        reset.expires_at = now + timedelta(minutes=10)
+        reset.last_sent_at = now
+        reset.attempts = 0
+    db.session.commit()
+
+    try:
+        _send_reset_email(email, code)
+    except Exception:
+        app.logger.exception("No se pudo enviar un código de restablecimiento")
+        # In local development, give the user actionable feedback. On a public
+        # deployment keep the generic response to avoid account enumeration.
+        db.session.delete(reset)
+        db.session.commit()
+        if request.remote_addr in {"127.0.0.1", "::1"}:
+            return jsonify(
+                success=False,
+                message="No se pudo enviar el correo. Revisá la configuración SMTP y la consola donde ejecutaste app.py.",
+            ), 503
+    return jsonify(success=True, message=generic_message)
+
+@app.post("/api/password-reset/confirm")
+def confirm_password_reset():
+    data = request.get_json(silent=True) if request.is_json else request.form
+    data = data or {}
+    email, code = data.get("email"), data.get("code")
+    password, confirmation = data.get("password"), data.get("password_confirmation")
+    if not all(isinstance(value, str) for value in (email, code, password, confirmation)):
+        return jsonify(success=False, message="Completá todos los campos."), 400
+    email, code = email.strip().lower(), code.strip()
+    password_error = validar_password(password)
+    if password_error:
+        return jsonify(success=False, message=password_error + "."), 400
+    if password != confirmation:
+        return jsonify(success=False, message="Las contraseñas no coinciden."), 400
+    if len(email) > 255 or len(code) != 6 or not code.isdigit():
+        return jsonify(success=False, message="El código es inválido o venció. Solicitá uno nuevo."), 400
+
+    reset = PasswordResetCode.query.filter_by(email=email).first()
+    now = _now_utc_naive()
+    if reset is None or now >= reset.expires_at or reset.attempts >= 5:
+        return jsonify(success=False, message="El código es inválido o venció. Solicitá uno nuevo."), 400
+    if not hmac.compare_digest(reset.code_hash, _hash_reset_code(email, code)):
+        reset.attempts += 1
+        db.session.commit()
+        return jsonify(success=False, message="El código es inválido o venció. Solicitá uno nuevo."), 400
+
+    user = User.query.filter_by(email=email).first()
+    if user is None:
+        db.session.delete(reset)
+        db.session.commit()
+        return jsonify(success=False, message="El código es inválido o venció. Solicitá uno nuevo."), 400
+    user.set_password(password)
+    db.session.delete(reset)
+    db.session.commit()
+    return jsonify(success=True, message="Contraseña actualizada. Ya podés iniciar sesión.")
 
 @app.get("/auth/google")
 def google_login():

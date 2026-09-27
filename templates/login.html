@@ -57,6 +57,22 @@
         .google-mark { color: #4285f4; font-size: 1.25rem; font-weight: 700; }
         .google-unavailable { display: block; margin-top: 9px; color: #6b7280; font-size: .8rem; text-align: center; }
         .auth-message { margin: -20px 0 24px; padding: 12px 14px; border-radius: 8px; background: #fff7ed; color: #9a3412; font-size: .9rem; line-height: 1.45; }
+        .reset-overlay { display: none; position: fixed; inset: 0; z-index: 10; padding: 20px; background: rgba(15,23,42,.62); align-items: center; justify-content: center; }
+        .reset-overlay.open, .reset-overlay:target { display: flex; }
+        .reset-dialog { position: relative; width: 100%; max-width: 460px; padding: 32px; border-radius: 16px; background: #fff; box-shadow: 0 20px 55px rgba(0,0,0,.25); }
+        .reset-dialog h2 { margin: 0 36px 10px 0; color: #00683e; font-size: 1.45rem; }
+        .reset-description { margin-bottom: 22px; color: #5b6470; font-size: .92rem; line-height: 1.5; }
+        .reset-dialog label { margin: 14px 0 7px; }
+        .reset-dialog input { width: 100%; padding: 13px 14px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; }
+        .reset-dialog input:focus { outline: 2px solid #9ad2bc; border-color: #00683e; }
+        .reset-submit { width: 100%; margin-top: 18px; padding: 13px; border: 0; border-radius: 8px; background: #00683e; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+        .reset-submit:disabled { opacity: .65; cursor: wait; }
+        .reset-close { position: absolute; top: 16px; right: 16px; padding: 6px 10px; border: 0; border-radius: 6px; background: transparent; color: #475569; font-size: 1.25rem; cursor: pointer; }
+        .reset-close:hover { background: #f1f5f9; }
+        .reset-status { min-height: 1.4em; margin-top: 14px; color: #166534; font-size: .9rem; line-height: 1.4; }
+        .reset-status.error { color: #b91c1c; }
+        .reset-resend { display: block; margin: 14px auto 0; border: 0; background: none; color: #00683e; font: inherit; font-size: .9rem; text-decoration: underline; cursor: pointer; }
+        [hidden] { display: none !important; }
         .register-section { text-align: center; margin-top: 20px; font-size: 0.95rem; color: #333; }
         .register-link { color: #333; font-weight: 600; text-decoration: underline; cursor: pointer; margin-left: 5px; }
         .register-link:hover { color: #00683e; }
@@ -81,7 +97,7 @@
             {% endif %}
         {% endwith %}
 
-        <form id="loginForm">
+        <form id="loginForm" method="post" action="/api/login">
             <div class="form-group">
                 <label for="email">Correo electrónico o usuario</label>
                 <input type="text" id="email" name="email" required autocomplete="username">
@@ -90,7 +106,7 @@
             <div class="form-group">
                 <div class="password-label-row">
                     <label for="password">Contraseña</label>
-                    <a href="#" class="forgot-password" onclick="forgotPassword(event)">Olvidé mi contraseña</a>
+                    <a href="#resetModal" id="forgotPasswordLink" class="forgot-password">Olvidé mi contraseña</a>
                 </div>
                 <input type="password" id="password" name="password" required autocomplete="current-password">
             </div>
@@ -118,7 +134,35 @@
         </div>
     </div>
 
-    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <div id="resetModal" class="reset-overlay" aria-hidden="true">
+        <section class="reset-dialog" role="dialog" aria-modal="true" aria-labelledby="resetTitle">
+            <button type="button" class="reset-close" aria-label="Cerrar" onclick="cerrarRestablecimiento()">×</button>
+            <h2 id="resetTitle">Restablecer contraseña</h2>
+            <p class="reset-description" id="resetDescription">Ingresá el correo asociado a tu cuenta. Te enviaremos un código de 6 dígitos.</p>
+
+            <form id="resetRequestForm" method="post" action="/api/password-reset/request">
+                <label for="resetEmail">Correo electrónico</label>
+                <input type="email" id="resetEmail" name="email" required maxlength="255" autocomplete="email">
+                <button type="submit" class="reset-submit">Enviar código</button>
+            </form>
+
+            <form id="resetConfirmForm" method="post" action="/api/password-reset/confirm" hidden>
+                <input type="hidden" id="resetConfirmEmail" name="email">
+                <label for="resetCode">Código de 6 dígitos</label>
+                <input type="text" id="resetCode" name="code" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
+                <label for="newPassword">Nueva contraseña</label>
+                <input type="password" id="newPassword" name="password" required minlength="8" maxlength="128" autocomplete="new-password">
+                <small class="reset-description">Entre 8 y 128 caracteres, con al menos una mayúscula y un carácter especial (por ejemplo, ! o #).</small>
+                <label for="confirmPassword">Repetí la nueva contraseña</label>
+                <input type="password" id="confirmPassword" name="password_confirmation" required minlength="8" maxlength="128" autocomplete="new-password">
+                <button type="submit" class="reset-submit">Guardar nueva contraseña</button>
+                <button type="button" class="reset-resend" onclick="reenviarCodigo()">Enviar otro código</button>
+            </form>
+            <p id="resetStatus" class="reset-status" role="status" aria-live="polite"></p>
+        </section>
+    </div>
+
+    <script defer type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
 
     <script>
         // Función auxiliar para mostrar notificaciones (Igual que en registro)
@@ -132,7 +176,11 @@
                 bgColor = "linear-gradient(to right, #00b4db, #0083b0)"; // Azul (Info)
             }
 
-            Toastify({
+            if (typeof window.Toastify !== 'function') {
+                console.log(message);
+                return;
+            }
+            window.Toastify({
                 text: message,
                 duration: 3000,
                 gravity: "top",
@@ -193,10 +241,145 @@
             }
         });
     
+        const resetModal = document.getElementById('resetModal');
+        const resetRequestForm = document.getElementById('resetRequestForm');
+        const resetConfirmForm = document.getElementById('resetConfirmForm');
+        const resetStatus = document.getElementById('resetStatus');
+
+        document.getElementById('forgotPasswordLink').addEventListener('click', forgotPassword);
+
         function forgotPassword(e) {
-            e.preventDefault();
-            showNotification('Funcionalidad no implementada aún.', 'info');
+            if (e) e.preventDefault();
+            resetModal.classList.add('open');
+            resetModal.setAttribute('aria-hidden', 'false');
+            resetRequestForm.hidden = false;
+            resetConfirmForm.hidden = true;
+            resetStatus.textContent = '';
+            resetStatus.classList.remove('error');
+            const loginEmail = document.getElementById('email').value.trim();
+            if (loginEmail.includes('@')) document.getElementById('resetEmail').value = loginEmail;
+            document.getElementById('resetEmail').focus();
         }
+
+        function cerrarRestablecimiento() {
+            resetModal.classList.remove('open');
+            resetModal.setAttribute('aria-hidden', 'true');
+            if (window.location.hash === '#resetModal') {
+                history.replaceState(null, '', window.location.pathname + window.location.search);
+            }
+        }
+
+        function mostrarEstadoRestablecimiento(message, isError = false) {
+            resetStatus.textContent = message;
+            resetStatus.classList.toggle('error', isError);
+        }
+
+        function validarNuevaClave(password) {
+            const cantidad = [...password].length;
+            if (cantidad < 8) return 'La contraseña debe tener al menos 8 caracteres.';
+            if (cantidad > 128) return 'La contraseña no puede superar los 128 caracteres.';
+            if (!/\p{Lu}/u.test(password)) return 'La contraseña debe incluir al menos una mayúscula.';
+            if (!/[^\p{L}\p{N}\s]/u.test(password)) return 'La contraseña debe incluir al menos un carácter especial (por ejemplo: ! o #).';
+            return null;
+        }
+
+        async function solicitarCodigo() {
+            const email = document.getElementById('resetEmail').value.trim();
+            const button = resetRequestForm.querySelector('button[type="submit"]');
+            button.disabled = true;
+            button.textContent = 'Enviando...';
+            mostrarEstadoRestablecimiento('Conectando con el servicio de correo. Puede tardar unos segundos.');
+            try {
+                const response = await fetch('/api/password-reset/request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    mostrarEstadoRestablecimiento(data.message || 'No se pudo enviar el código.', true);
+                    return false;
+                }
+                resetRequestForm.setAttribute('hidden', '');
+                resetConfirmForm.removeAttribute('hidden');
+                document.getElementById('resetConfirmEmail').value = email;
+                document.getElementById('resetDescription').textContent = 'Si existe una cuenta con ese correo, enviamos un código de 6 dígitos. Ingresalo junto con tu nueva contraseña.';
+                mostrarEstadoRestablecimiento((data.message || 'Revisá tu correo.') + ' Ingresá el código recibido para continuar.');
+                return true;
+            } catch (error) {
+                console.error('Error solicitando el código:', error);
+                mostrarEstadoRestablecimiento('No se pudo conectar con el servidor. Intentá nuevamente.', true);
+                return false;
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Enviar código';
+            }
+        }
+
+        resetRequestForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            await solicitarCodigo();
+        });
+
+        async function reenviarCodigo() {
+            resetConfirmForm.hidden = true;
+            resetRequestForm.hidden = false;
+            await solicitarCodigo();
+        }
+
+        resetConfirmForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const password = document.getElementById('newPassword').value;
+            const confirmation = document.getElementById('confirmPassword').value;
+            const errorClave = validarNuevaClave(password);
+            if (errorClave) {
+                mostrarEstadoRestablecimiento(errorClave, true);
+                document.getElementById('newPassword').focus();
+                return;
+            }
+            if (password !== confirmation) {
+                mostrarEstadoRestablecimiento('Las contraseñas no coinciden.', true);
+                document.getElementById('confirmPassword').focus();
+                return;
+            }
+            const button = resetConfirmForm.querySelector('button[type="submit"]');
+            button.disabled = true;
+            button.textContent = 'Guardando...';
+            mostrarEstadoRestablecimiento('');
+            try {
+                const response = await fetch('/api/password-reset/confirm', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: document.getElementById('resetEmail').value.trim(),
+                        code: document.getElementById('resetCode').value.trim(),
+                        password,
+                        password_confirmation: confirmation
+                    })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    mostrarEstadoRestablecimiento(data.message || 'No se pudo cambiar la contraseña.', true);
+                    return;
+                }
+                const email = document.getElementById('resetEmail').value.trim();
+                document.getElementById('email').value = email;
+                document.getElementById('password').value = '';
+                resetConfirmForm.reset();
+                cerrarRestablecimiento();
+                showNotification(data.message, 'success');
+            } catch (error) {
+                console.error('Error restableciendo la contraseña:', error);
+                mostrarEstadoRestablecimiento('No se pudo conectar con el servidor. Intentá nuevamente.', true);
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Guardar nueva contraseña';
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && resetModal.classList.contains('open')) cerrarRestablecimiento();
+        });
     </script>
 </body>
 </html>

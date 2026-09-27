@@ -43,12 +43,36 @@ class GoogleAccount(db.Model):
     google_sub = db.Column(db.String(255), primary_key=True)
     email = db.Column(db.String(255), db.ForeignKey("usuarios.email", ondelete="CASCADE"), nullable=False, index=True)
 
+
+class PasswordResetCode(db.Model):
+    __tablename__ = "codigos_restablecimiento"
+
+    email = db.Column(db.String(255), db.ForeignKey("usuarios.email", ondelete="CASCADE"), primary_key=True)
+    code_hash = db.Column(db.String(64), nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    last_sent_at = db.Column(db.DateTime, nullable=False)
+    attempts = db.Column(db.Integer, nullable=False, default=0)
+
 # --- MÉTODOS AUXILIARES ---
+
+def validar_password(password):
+    if not isinstance(password, str):
+        return "La contraseña no es válida"
+    if len(password) < 8:
+        return "La contraseña debe tener al menos 8 caracteres"
+    if len(password) > 128:
+        return "La contraseña no puede superar los 128 caracteres"
+    if not any(caracter.isupper() for caracter in password):
+        return "La contraseña debe incluir al menos una mayúscula"
+    if not any(not caracter.isalnum() and not caracter.isspace() for caracter in password):
+        return "La contraseña debe incluir al menos un carácter especial (por ejemplo: ! o #)"
+    return None
 
 def crear_usuario(nombre, email, password):
     nombre, email = nombre.strip(), email.strip().lower()
-    if not nombre or not email or len(nombre) > 100 or len(email) > 255 or len(password) < 8:
-        return False, "Revisá los datos: la contraseña debe tener al menos 8 caracteres"
+    error_password = validar_password(password)
+    if not nombre or not email or len(nombre) > 100 or len(email) > 255 or error_password:
+        return False, error_password or "Revisá los datos ingresados"
     # La restricción única de la base de datos sigue siendo la garantía final
     # ante registros concurrentes.
     if User.query.filter_by(email=email).first():

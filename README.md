@@ -37,6 +37,12 @@ Para habilitarlo, creá un cliente OAuth de tipo **Aplicación web** en Google C
 
 El ingreso usa OpenID Connect y requiere que Google confirme que el correo está verificado. Las cuentas locales existentes con el mismo correo verificado se vinculan automáticamente; los nuevos usuarios se crean al primer ingreso. Se guarda el identificador estable de Google en la tabla `cuentas_google`.
 
+## Restablecimiento de contraseña
+
+La opción «Olvidé mi contraseña» envía un código de 6 dígitos por SMTP. Configurá `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` y `MAIL_FROM` en `.env`. Con Gmail se puede usar `smtp.gmail.com` en el puerto 587 con TLS; la cuenta que envía debe usar una contraseña de aplicación, no la contraseña habitual. [Ayuda oficial de Gmail para SMTP](https://support.google.com/a/answer/176600).
+
+Los códigos vencen a los 10 minutos, se guardan hasheados, tienen hasta 5 intentos y las solicitudes se limitan a una por minuto para cada dirección. La respuesta de solicitud no revela si el correo está registrado. La tabla de códigos se crea automáticamente al iniciar la aplicación.
+
 Ejemplo de configuración para PostgreSQL:
 
 ```dotenv

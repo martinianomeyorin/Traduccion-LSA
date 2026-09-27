@@ -42,9 +42,9 @@
             </div>
 
             <div class="form-group">
-                <input type="password" id="password" placeholder="Contraseña" required minlength="8" autocomplete="new-password">
+                <input type="password" id="password" placeholder="Contraseña" required minlength="8" maxlength="128" autocomplete="new-password">
                 <small style="color: #666; font-size: 0.8rem; margin-top: 5px; display: block;">
-                    Debe tener al menos 8 caracteres.
+                    Entre 8 y 128 caracteres, con al menos una mayúscula y un carácter especial (por ejemplo, ! o #).
                 </small>
             </div>
 
@@ -82,6 +82,15 @@
             }).showToast();
         }
 
+        function validarNuevaClave(password) {
+            const cantidad = [...password].length;
+            if (cantidad < 8) return 'La contraseña debe tener al menos 8 caracteres.';
+            if (cantidad > 128) return 'La contraseña no puede superar los 128 caracteres.';
+            if (!/\p{Lu}/u.test(password)) return 'La contraseña debe incluir al menos una mayúscula.';
+            if (!/[^\p{L}\p{N}\s]/u.test(password)) return 'La contraseña debe incluir al menos un carácter especial (por ejemplo: ! o #).';
+            return null;
+        }
+
         document.getElementById('registerForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
@@ -95,8 +104,9 @@
                 return;
             }
 
-            if (password.length < 8) {
-                showNotification('La contraseña debe tener al menos 8 caracteres.', 'error');
+            const errorClave = validarNuevaClave(password);
+            if (errorClave) {
+                showNotification(errorClave, 'error');
                 return;
             }
             btn.disabled = true;
