@@ -42,9 +42,9 @@
             </div>
 
             <div class="form-group">
-                <input type="password" id="password" placeholder="Contraseña" required autocomplete="new-password">
+                <input type="password" id="password" placeholder="Contraseña" required minlength="8" autocomplete="new-password">
                 <small style="color: #666; font-size: 0.8rem; margin-top: 5px; display: block;">
-                    Debe tener mayúscula, carácter especial y min. 6 caracteres.
+                    Debe tener al menos 8 caracteres.
                 </small>
             </div>
 
@@ -95,25 +95,13 @@
                 return;
             }
 
-            if (password.length < 6) {
-                showNotification('La contraseña debe tener al menos 6 caracteres.', 'error');
+            if (password.length < 8) {
+                showNotification('La contraseña debe tener al menos 8 caracteres.', 'error');
                 return;
             }
-
-            const hasUpperCase = /[A-Z]/.test(password);
-            if (!hasUpperCase) {
-                showNotification('La contraseña debe contener al menos una letra mayúscula.', 'error');
-                return;
-            }
-            const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
-            if (!hasSpecialChar) {
-                showNotification('La contraseña debe contener al menos un carácter especial (ej: ! @ # $).', 'error');
-                return;
-            }
+            btn.disabled = true;
+            btn.innerText = 'Registrando...';
             try {
-                btn.disabled = true;
-                btn.innerText = "Registrando...";
-
                 const res = await fetch('/api/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -136,18 +124,8 @@
                 console.error(error);
                 showNotification('Error de conexión con el servidor.', 'error');
             } finally {
-                const btnRef = document.querySelector('.btn-register'); 
-                if (btnRef.innerText !== "Registrando...") {
-                     btn.disabled = false;
-                     btn.innerText = "Registrar";
-                } else {
-                    setTimeout(() => {
-                        if (!window.location.href.endsWith('/')) { 
-                             btn.disabled = false;
-                             btn.innerText = "Registrar";
-                        }
-                     }, 500);
-                }
+                btn.disabled = false;
+                btn.innerText = 'Registrar';
             }
         });
     </script>

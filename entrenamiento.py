@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
@@ -11,7 +12,8 @@ def entrenar_modelo():
     
     # Cargar dataset
     print("\n📂 Cargando dataset...")
-    df = pd.read_csv("dataset_manos_lsa_v2_con_palabras.csv")
+    ruta_dataset = os.getenv("DATASET_FILE", "dataset_manos_lsa_v2.csv")
+    df = pd.read_csv(ruta_dataset)
     print(f"✓ Dataset cargado: {len(df)} muestras")
     print(f"✓ Columnas: {df.shape[1]}")
     print(f"✓ Clases únicas: {df['label'].nunique()}")
@@ -38,8 +40,9 @@ def entrenar_modelo():
     
     # Verificar que tenemos 128 features
     if X.shape[1] != 128:
-        print(f"\n⚠️ ADVERTENCIA: Se esperaban 128 features pero hay {X.shape[1]}")
-        print("   Verifica que el dataset fue generado correctamente")
+        raise ValueError(f"El modelo requiere 128 características; el dataset contiene {X.shape[1]}")
+    if df.empty or df["label"].isna().any():
+        raise ValueError("El dataset está vacío o contiene etiquetas faltantes")
     
     # Codificar labels
     print("\n🔤 Codificando etiquetas...")

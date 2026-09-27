@@ -1,93 +1,60 @@
-# Traduccion LSA
+# Traductor de Lengua de Señas Argentina
 
+Aplicación web que reconoce un conjunto de señas estáticas de LSA mediante los landmarks de ambas manos y un modelo TensorFlow. Permite armar una oración, solicitar una reformulación en español argentino y consultar o borrar el historial asociado a la cuenta.
 
+> El modelo incluido reconoce las clases con las que fue entrenado; no es un traductor general ni interpreta por sí solo gramática, movimiento continuo o expresiones no representadas en el dataset.
 
-## Getting started
+## Requisitos
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+- Python 3.10 u 3.11 (TensorFlow y MediaPipe deben ser compatibles con la plataforma).
+- Cámara web.
+- Ollama instalado y ejecutándose para habilitar la reformulación local.
+- Para producción, PostgreSQL y una clave de sesión secreta.
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+## Instalación
 
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
-
+```powershell
+py -3.10 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+Copy-Item .env.example .env
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/MartmeyUSAL/traduccion-lsa.git
-git branch -M main
-git push -uf origin main
+
+Editá `.env` y configurá `SECRET_KEY` y, si corresponde, `DATABASE_URL`. En desarrollo, la aplicación usa SQLite en `lsa.db` si no se especifica `DATABASE_URL`; así puede iniciarse sin instalar PostgreSQL. La reformulación usa Ollama local: instalalo, iniciá el servicio y descargá el modelo con `ollama pull gemma3:4b`. El modelo predeterminado ocupa aproximadamente 3,3 GB; podés cambiarlo con `OLLAMA_MODEL`.
+
+## Ejecución
+
+```powershell
+python app.py
 ```
 
-## Integrate with your tools
+Abrí <http://127.0.0.1:5000>. La tabla se crea al iniciar si no existe. Para seleccionar otra cámara, definí `CAMERA_INDEX` (por defecto `0`). `OLLAMA_BASE_URL`, `OLLAMA_MODEL` y `OLLAMA_TIMEOUT_SECONDS` configuran el servicio local de IA. `COOKIE_SECURE=true` debe usarse cuando la aplicación está detrás de HTTPS. `HOST` y `PORT` permiten ajustar la interfaz de escucha.
 
-- [ ] [Set up project integrations](https://gitlab.com/MartmeyUSAL/traduccion-lsa/-/settings/integrations)
+Ejemplo de configuración para PostgreSQL:
 
-## Collaborate with your team
+```dotenv
+SECRET_KEY=una-clave-aleatoria-larga
+DATABASE_URL=postgresql://usuario:clave@localhost:5432/lsa
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=gemma3:4b
+OLLAMA_TIMEOUT_SECONDS=180
+CAMERA_INDEX=0
+COOKIE_SECURE=false
+```
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+## Estructura
 
-## Test and Deploy
+- `app.py`: servidor Flask, cámara, inferencia y API.
+- `Models/`: usuarios e historial SQLAlchemy.
+- `templates/` y `static/`: interfaz.
+- `modelo_gestos_v2.h5`, `labels_v2.pkl`: modelo y etiquetas usados en ejecución.
+- `preprocesamiento.py`, `entrenamiento.py`, `deteccion.py`: herramientas del flujo de datos y entrenamiento.
 
-Use the built-in continuous integration in GitLab.
+Los scripts de entrenamiento requieren un dataset de videos propio, no incluido en el repositorio. `DATASET_DIR` se configura en el entorno para indicar su carpeta. Las muestras deben conservar las 128 características que espera el modelo: 63 coordenadas por mano y dos indicadores de presencia.
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+## Privacidad y operación
 
-***
+La cámara y la reformulación se procesan localmente en el servidor. Las oraciones mejoradas se guardan en el historial de la cuenta. Cada sesión conserva su propio borrador; la cámara es un recurso local compartido y atiende una conexión a la vez. El endpoint `/health` informa el estado de la base y del modelo.
 
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+En despliegues públicos, usá HTTPS, `SECRET_KEY` aleatoria y una base PostgreSQL; ejecutá detrás de un servidor WSGI y no uses el servidor de desarrollo de Flask. Los cambios de esquema existentes requieren una migración de base de datos: `create_all` solo crea tablas que todavía no existen.

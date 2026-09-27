@@ -1,5 +1,7 @@
 # Archivo de variables de entorno (contiene secretos)
 .env
+lsa.db
+*.db
 
 # Modelos de Machine Learning y datos pesados
 modelo_gestos.h5
@@ -14,4 +16,7 @@ __pycache__/
 
 # Cualquier otro archivo donde hayas anotado claves o notas
 *.txt
+!requirements.txt
 *.CSV
+dataset_manos_lsa_v2.csv
+dataset_manos_lsa_v2_con_palabras.csv

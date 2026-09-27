@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import cv2
 import mediapipe as mp
 import pandas as pd
@@ -87,7 +88,7 @@ def procesar_video(ruta_video, etiqueta):
     return manos_detectadas
 
 def main():
-    carpeta_dataset = "C:\ingenieria Informatica\Quinto año\Proyecto LSA\LSA"
+    carpeta_dataset = Path(os.getenv("DATASET_DIR", "./LSA")).expanduser().resolve()
     
     print("🚀 GENERANDO DATASET DE LENGUAJE DE SEÑAS (2 MANOS)")
     print("=" * 50)
@@ -168,7 +169,7 @@ def main():
         df = pd.DataFrame(dataset, columns=columnas)
         
         # Guardar CSV
-        archivo_salida = "dataset_manos_lsa_v2.csv"
+        archivo_salida = Path("dataset_manos_lsa_v2.csv")
         df.to_csv(archivo_salida, index=False)
         
         # Estadísticas finales

@@ -1,0 +1,13 @@
+Flask
+Flask-SQLAlchemy
+SQLAlchemy
+psycopg[binary]
+opencv-contrib-python==4.11.0.86
+mediapipe==0.10.21
+tensorflow==2.19.1
+numpy
+requests
+python-dotenv
+pandas
+tqdm
+scikit-learn

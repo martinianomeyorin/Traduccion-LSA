@@ -1,374 +1,316 @@
+"""Aplicación web para traducir señas de LSA.
+
+Configuración por variables de entorno: SECRET_KEY, DATABASE_URL y OLLAMA_BASE_URL.
+"""
+import os
+import pickle
+import threading
+import time
+from pathlib import Path
+
 import cv2
 import mediapipe as mp
 import numpy as np
-import tensorflow as tf
-import pickle
-import time
 import requests
-import os
-import threading
-from flask import Flask, render_template, Response, jsonify, request, session, redirect, url_for
+import tensorflow as tf
 from dotenv import load_dotenv
+from flask import Flask, Response, jsonify, redirect, render_template, request, session, url_for
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
+from Models.HistorialModels import HistorialMensaje, borrar_mensaje, guardar_historial
+from Models.UserModels import autenticar_usuario, crear_usuario, db
 
-from Models.UserModels import db, crear_usuario, autenticar_usuario
-from Models.HistorialModels import guardar_historial, borrar_mensaje, HistorialMensaje
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
 
 app = Flask(__name__)
-
-# ============= CONFIGURACIÓN DE BASE DE DATOS =============
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:marti123@127.0.0.1:5432/LSA'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.secret_key = 'marti123' 
-
+app.config.update(
+    SECRET_KEY=os.getenv("SECRET_KEY") or os.urandom(32),
+    SQLALCHEMY_DATABASE_URI=os.getenv("DATABASE_URL", f"sqlite:///{(BASE_DIR / 'lsa.db').as_posix()}"),
+    SQLALCHEMY_TRACK_MODIFICATIONS=False,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.getenv("COOKIE_SECURE", "false").lower() == "true",
+    MAX_CONTENT_LENGTH=16 * 1024,
+)
 db.init_app(app)
-
 with app.app_context():
     db.create_all()
-    print("💾 Conectado a PostgreSQL (Base: LSA). Tablas verificadas.")
 
-# ============= CONFIGURACIÓN GLOBAL IA =============
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# State belongs to the signed-in user; only one local camera/model instance is used.
+_states = {}
+_state_lock = threading.RLock()
+_camera_lock = threading.Lock()
+_ia_jobs = set()
+_ia_lock = threading.Lock()
 
-print("🚀 Cargando modelo de gestos...")
+def _state(email):
+    with _state_lock:
+        return _states.setdefault(email, {
+            "palabras": [], "oracion_mejorada": "", "ultima_deteccion": "-",
+            "estado_ia": "idle", "confianza_actual": 0, "manos_detectadas": 0,
+            "error_ia": "", "camera_error": "", "ultima_palabra": None, "contador": 0, "ultimo_tiempo": 0,
+        })
+
 try:
-    model = tf.keras.models.load_model("modelo_gestos_v2.h5")
-    with open("labels_v2.pkl", "rb") as f:
-        etiquetas = pickle.load(f)
-    print(f"✅ Modelo cargado: {len(etiquetas)} clases")
-except Exception as e:
-    print(f"❌ Error cargando modelo: {e}")
-    model = None
-    etiquetas = []
+    model = tf.keras.models.load_model(BASE_DIR / "modelo_gestos_v2.h5")
+    with (BASE_DIR / "labels_v2.pkl").open("rb") as labels_file:
+        etiquetas = pickle.load(labels_file)
+    if model.output_shape[-1] != len(etiquetas):
+        raise ValueError("La cantidad de etiquetas no coincide con las salidas del modelo")
+    app.logger.info("Modelo de gestos cargado (%d clases)", len(etiquetas))
+except Exception:
+    app.logger.exception("No se pudo cargar el modelo de gestos")
+    model, etiquetas = None, []
 
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
-hands = mp_hands.Hands(
-    max_num_hands=2,
-    min_detection_confidence=0.7,
-    min_tracking_confidence=0.5
-)
-
-# ============= ESTADO GLOBAL =============
-estado_app = {
-    "palabras": [],
-    "oracion_mejorada": "",
-    "ultima_deteccion": "-",
-    "estado_ia": "idle",
-    "confianza_actual": 0,
-    "manos_detectadas": 0
-}
-
-# Variables de control para la lógica de detección
-variables_control = {
-    "ultima_palabra": None,
-    "contador_misma_palabra": 0,
-    "tiempo_ultima_deteccion": 0,
-    "UMBRAL_CONFIANZA": 0.75,
-    "TIEMPO_ESPERA": 1.5
-}
+hands = mp_hands.Hands(max_num_hands=2, min_detection_confidence=0.7, min_tracking_confidence=0.5)
 
 def extraer_landmarks_mano(hand_landmarks):
-    puntos = []
-    for landmark in hand_landmarks.landmark:
-        puntos.extend([landmark.x, landmark.y, landmark.z])
-    return puntos
+    return [coordenada for landmark in hand_landmarks.landmark for coordenada in (landmark.x, landmark.y, landmark.z)]
 
-# === FUNCIÓN ASÍNCRONA PARA CONSULTAR CHATGPT ===
-def consultar_chatgpt_async(app_instance, user_email):
-    # 1. Validación inicial
-    if not estado_app["palabras"]:
-        estado_app["estado_ia"] = "error"
-        return
-
-    oracion_primitiva = " ".join(estado_app["palabras"]).strip()
-    estado_app["estado_ia"] = "cargando"
-    
-    # 2. Configuración OpenAI
-    headers = {
-        "Content-Type": "application/json", 
-        "Authorization": f"Bearer {OPENAI_API_KEY}"
-    }
-    
-    prompt = f"""Se te pasarán oraciones primitivas, carentes de conjugaciones, conectores y artículos. 
-Debes transformar esa oración y darle un sentido más natural en español argentino.
-Oración primitiva: {oracion_primitiva}
-Oración mejorada:"""
-    
-    data = {
-        "model": "gpt-4o-mini",
-        "messages": [
-            {"role": "system", "content": "Sos un asistente que mejora oraciones en español argentino."},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.7,
-        "max_tokens": 150
-    }
-    
+def _mejorar_oracion(email, oracion):
+    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+    ollama_model = os.getenv("OLLAMA_MODEL", "gemma3:4b")
     try:
-        # 3. Petición a OpenAI
-        response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=data, timeout=10)
-        
-        if response.status_code == 200:
-            res = response.json()
-            mejorada = res['choices'][0]['message']['content'].strip().replace("Oración mejorada:", "").strip()
-            
-            # Actualizamos estado global
-            estado_app["oracion_mejorada"] = mejorada
-            estado_app["estado_ia"] = "listo"
+        response = requests.post(
+            f"{ollama_url}/api/chat",
+            json={"model": ollama_model, "stream": False, "messages": [
+                {"role": "system", "content": "Reescribí frases primitivas de Lengua de Señas Argentina como español argentino natural. Conservá el sentido y no agregues información."},
+                {"role": "user", "content": oracion}], "options": {"temperature": 0.4, "num_predict": 150}},
+            timeout=float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "180")),
+        )
+        if not response.ok:
+            try:
+                provider_message = response.json().get("error", "")
+            except (ValueError, AttributeError):
+                provider_message = ""
+            app.logger.error("Ollama respondió HTTP %s: %s", response.status_code, str(provider_message)[:500])
+            if response.status_code == 404:
+                message = f"Ollama no encuentra el modelo {ollama_model}. Descargalo con: ollama pull {ollama_model}"
+            elif response.status_code >= 500:
+                message = "Ollama tuvo un problema al generar la respuesta. Revisá que el modelo esté instalado y volvé a intentar."
+            else:
+                message = f"Ollama rechazó la solicitud (HTTP {response.status_code}). Revisá la salida del servidor."
+            with _state_lock:
+                _state(email).update(estado_ia="error", error_ia=message)
+            return
+        mejorada = response.json()["message"]["content"].strip()
+        if not mejorada:
+            raise ValueError("La IA devolvió una respuesta vacía")
+        with _state_lock:
+            state = _state(email)
+            state["oracion_mejorada"], state["estado_ia"], state["error_ia"] = mejorada, "listo", ""
+        with app.app_context():
+            if not guardar_historial(email, mejorada):
+                app.logger.error("No se pudo guardar el historial para %s", email)
+    except requests.RequestException as error:
+        app.logger.warning("No se pudo conectar con Ollama: %s", error)
+        with _state_lock:
+            _state(email).update(estado_ia="error", error_ia="No se pudo conectar con Ollama. Confirmá que la aplicación de Ollama esté abierta y volvé a intentar.")
+    except Exception:
+        app.logger.exception("Error al procesar la respuesta de Ollama")
+        with _state_lock:
+            _state(email).update(estado_ia="error", error_ia="No se pudo procesar la respuesta de Ollama. Revisá la salida del servidor.")
+    finally:
+        with _ia_lock:
+            _ia_jobs.discard(email)
 
-            # === SECCIÓN DE GUARDADO CON DEBUG ===
-            print(f"\n--- INTENTO DE GUARDAR HISTORIAL ---")
-            print(f"📧 Email recibido: '{user_email}'")
-            print(f"📝 Mensaje: '{mejorada}'")
-
-            if user_email:
-                try:
-                    # Usamos el contexto de la aplicación para conectar a la BD
-                    with app_instance.app_context():
-                        # Llamamos a la función y capturamos el resultado
-                        exito = guardar_historial(user_email, mejorada)
-                        
-                        if exito:
-                            print("✅ ÉXITO: Mensaje guardado en la base de datos.")
+def generar_frames(email):
+    # Serializes camera access so multiple tabs cannot open competing devices.
+    with _camera_lock:
+        requested_index = int(os.getenv("CAMERA_INDEX", "2"))
+        backend = cv2.CAP_DSHOW if os.name == "nt" else cv2.CAP_ANY
+        cap = None
+        for camera_index in dict.fromkeys((requested_index, 2, 0, 1)):
+            candidate = cv2.VideoCapture(camera_index, backend)
+            if candidate.isOpened():
+                cap = candidate
+                app.logger.info("Cámara abierta en el índice %s", camera_index)
+                break
+            candidate.release()
+        if cap is None:
+            message = "No se pudo abrir ninguna cámara. Cerrá otras apps que la estén usando o configurá CAMERA_INDEX en .env."
+            app.logger.error(message)
+            with _state_lock:
+                _state(email)["camera_error"] = message
+            yield b""
+            return
+        with _state_lock:
+            _state(email)["camera_error"] = ""
+        try:
+            while True:
+                ok, frame = cap.read()
+                if not ok:
+                    with _state_lock:
+                        _state(email)["camera_error"] = "La cámara se abrió, pero dejó de enviar imagen. Revisá la conexión y los permisos de cámara."
+                    break
+                frame = cv2.flip(frame, 1)
+                results = hands.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                state = _state(email)
+                state["manos_detectadas"] = len(results.multi_hand_landmarks or [])
+                debug = "Sin manos detectadas"
+                if results.multi_hand_landmarks:
+                    for landmarks in results.multi_hand_landmarks:
+                        mp_drawing.draw_landmarks(frame, landmarks, mp_hands.HAND_CONNECTIONS)
+                if results.multi_hand_landmarks and results.multi_handedness and model is not None:
+                    left, right, has_left, has_right = [0.0] * 63, [0.0] * 63, 0, 0
+                    for landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
+                        label = handedness.classification[0].label
+                        if label == "Right":
+                            right, has_right = extraer_landmarks_mano(landmarks), 1
                         else:
-                            print("❌ ERROR: guardar_historial devolvió False. (Revisa si el usuario existe en la tabla usuarios)")
-                except Exception as db_error:
-                    print(f"❌ CRASH BD: Falló la conexión dentro del hilo: {db_error}")
-            else:
-                print("⚠️ ALERTA: No se guardó porque el user_email es None o vacío.")
-            
-            print("------------------------------------\n")
-            # ======================================
-
-        else:
-            print(f"Error OpenAI status: {response.status_code}")
-            estado_app["estado_ia"] = "error"
-            
-    except Exception as e:
-        print(f"Error General OpenAI: {e}")
-        estado_app["estado_ia"] = "error"
-
-def generar_frames():
-    cap = cv2.VideoCapture(2) 
-    if not cap.isOpened():
-        cap = cv2.VideoCapture(0)
-        if not cap.isOpened(): return
-    
-    while True:
-        success, frame = cap.read()
-        if not success: break
-        frame = cv2.flip(frame, 1)
-        img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = hands.process(img_rgb)
-        
-        estado_app["manos_detectadas"] = 0
-        mensaje_debug = "Sin manos detectadas"
-
-        if results.multi_hand_landmarks and results.multi_handedness:
-            estado_app["manos_detectadas"] = len(results.multi_hand_landmarks)
-            for hand_landmarks in results.multi_hand_landmarks:
-                mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-
-            if model is not None:
-                mano_izquierda = [0.0] * 63
-                mano_derecha = [0.0] * 63
-                tiene_izquierda = 0
-                tiene_derecha = 0
-
-                for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
-                    label = handedness.classification[0].label
-                    landmarks = extraer_landmarks_mano(hand_landmarks)
-                    if label == "Right":
-                        mano_derecha = landmarks
-                        tiene_derecha = 1
-                    else:
-                        mano_izquierda = landmarks
-                        tiene_izquierda = 1
-                
-                fila_combinada = mano_izquierda + mano_derecha + [tiene_izquierda, tiene_derecha]
-                
-                if len(fila_combinada) == 128:
+                            left, has_left = extraer_landmarks_mano(landmarks), 1
                     try:
-                        prediccion = model.predict(np.array([fila_combinada]), verbose=0)[0]
-                        prob = np.max(prediccion)
-                        estado_app["confianza_actual"] = int(prob * 100)
-                        
-                        if prob >= variables_control["UMBRAL_CONFIANZA"]:
-                            idx = np.argmax(prediccion)
-                            mejor_prediccion = etiquetas[idx]
-                            mensaje_debug = f"{mejor_prediccion} ({int(prob*100)}%)"
-                            tiempo_actual = time.time()
-
-                            if variables_control["ultima_palabra"] != mejor_prediccion:
-                                variables_control["contador_misma_palabra"] = 1
-                                variables_control["ultima_palabra"] = mejor_prediccion
+                        prediction = model(np.asarray([left + right + [has_left, has_right]], dtype=np.float32), training=False).numpy()[0]
+                        probability, index = float(np.max(prediction)), int(np.argmax(prediction))
+                        state["confianza_actual"] = round(probability * 100)
+                        if probability >= 0.75:
+                            word, now = str(etiquetas[index]), time.monotonic()
+                            debug = f"{word} ({round(probability * 100)}%)"
+                            if state["ultima_palabra"] == word:
+                                state["contador"] += 1
                             else:
-                                variables_control["contador_misma_palabra"] += 1
-                            
-                            if (variables_control["contador_misma_palabra"] >= 10 and 
-                               (tiempo_actual - variables_control["tiempo_ultima_deteccion"]) > variables_control["TIEMPO_ESPERA"]):
-                                estado_app["palabras"].append(mejor_prediccion)
-                                estado_app["ultima_deteccion"] = mejor_prediccion
-                                variables_control["tiempo_ultima_deteccion"] = tiempo_actual
-                                variables_control["contador_misma_palabra"] = 0
-                    except Exception: pass
-            else:
-                 mensaje_debug = "Modelo no cargado"
-        else:
-            variables_control["contador_misma_palabra"] = 0
-            variables_control["ultima_palabra"] = None
+                                state["ultima_palabra"], state["contador"] = word, 1
+                            if state["contador"] >= 10 and now - state["ultimo_tiempo"] > 1.5:
+                                if state["palabras"] and state["palabras"][-1] != " ":
+                                    state["palabras"].append(" ")
+                                state["palabras"].append(word)
+                                state["ultima_deteccion"], state["ultimo_tiempo"] = word, now
+                                state["contador"] = 0
+                        else:
+                            state["contador"], state["ultima_palabra"] = 0, None
+                    except Exception:
+                        app.logger.exception("Error durante la inferencia")
+                elif model is None:
+                    debug = "Modelo no cargado"
+                cv2.putText(frame, debug, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                encoded, buffer = cv2.imencode(".jpg", frame)
+                if encoded:
+                    yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
+        finally:
+            cap.release()
 
-        # Dibujar info en pantalla (opcional para debug)
-        cv2.putText(frame, mensaje_debug, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        
-        ret, buffer = cv2.imencode('.jpg', frame)
-        frame = buffer.tobytes()
-        yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-
-# ============= RUTAS =============
-
-@app.route('/')
+@app.get("/")
 def login_page():
-    if 'user_email' in session:
-        return redirect(url_for('dashboard'))
-    return render_template('login.html')
+    return redirect(url_for("dashboard")) if session.get("user_email") else render_template("login.html")
 
-@app.route('/register')
+@app.get("/register")
 def register_page():
-    return render_template('register.html')
+    return render_template("register.html")
 
-@app.route('/api/login', methods=['POST'])
+@app.post("/api/login")
 def api_login():
-    data = request.json
-    identificador = data.get('email')
-    password = data.get('password')
-    exito, usuario = autenticar_usuario(identificador, password)
-    if exito:
-        session['user_email'] = usuario.email
-        session['username'] = usuario.nombre
-        return jsonify({"success": True, "message": "Login exitoso"})
-    else:
-        return jsonify({"success": False, "message": "Credenciales inválidas"}), 401
-
-@app.route('/api/register', methods=['POST'])
-def api_register():
-    data = request.json
-    nombre = data.get('username') 
-    email = data.get('email')
-    password = data.get('password')
-    
-    if not nombre or not email or not password:
-        return jsonify({"success": False, "message": "Faltan datos"}), 400
-    
-    # Intenta crear usuario
-    exito, mensaje = crear_usuario(nombre, email, password)
-    
-    if exito:
-        return jsonify({"success": True, "message": mensaje})
-    else:
-        return jsonify({"success": False, "message": mensaje}), 400
-
-@app.route('/logout')
-def logout():
-    global estado_app, variables_control
-    estado_app["palabras"] = []
-    estado_app["oracion_mejorada"] = ""
-    estado_app["ultima_deteccion"] = "-"
-    estado_app["estado_ia"] = "idle"
-    estado_app["confianza_actual"] = 0
-    estado_app["manos_detectadas"] = 0
-    variables_control["ultima_palabra"] = None
-    variables_control["contador_misma_palabra"] = 0
+    data = request.get_json(silent=True) or {}
+    email, password = data.get("email"), data.get("password")
+    if not isinstance(email, str) or not isinstance(password, str) or not email.strip() or not password:
+        return jsonify(success=False, message="Ingresá tu usuario y contraseña"), 400
+    success, user = autenticar_usuario(email.strip(), password)
+    if not success:
+        return jsonify(success=False, message="Credenciales inválidas"), 401
     session.clear()
-    return redirect(url_for('login_page'))
+    session.update(user_email=user.email, username=user.nombre)
+    return jsonify(success=True, message="Login exitoso")
 
-@app.route('/dashboard')
+@app.post("/api/register")
+def api_register():
+    data = request.get_json(silent=True) or {}
+    name, email, password = data.get("username"), data.get("email"), data.get("password")
+    if not all(isinstance(value, str) for value in (name, email, password)):
+        return jsonify(success=False, message="Completá todos los campos"), 400
+    if not name.strip() or not email.strip() or len(name.strip()) > 100 or len(email.strip()) > 255:
+        return jsonify(success=False, message="Revisá el nombre y el correo ingresados"), 400
+    if len(password) < 8:
+        return jsonify(success=False, message="La contraseña debe tener al menos 8 caracteres"), 400
+    success, message = crear_usuario(name.strip(), email.strip(), password)
+    return jsonify(success=success, message=message), (201 if success else 400)
+
+@app.get("/logout")
+def logout():
+    email = session.get("user_email")
+    if email:
+        with _state_lock:
+            _states.pop(email, None)
+    session.clear()
+    return redirect(url_for("login_page"))
+
+@app.get("/dashboard")
 def dashboard():
-    if 'user_email' not in session:
-        return redirect(url_for('login_page'))
-    return render_template('dashboard.html', username=session.get('username'))
+    if not session.get("user_email"):
+        return redirect(url_for("login_page"))
+    return render_template("dashboard.html", username=session.get("username"))
 
-@app.route('/video_feed')
+@app.get("/video_feed")
 def video_feed():
-    return Response(generar_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    if not session.get("user_email"):
+        return "", 401
+    return Response(generar_frames(session["user_email"]), mimetype="multipart/x-mixed-replace; boundary=frame", headers={"Cache-Control": "no-store"})
 
-@app.route('/get_data')
+@app.get("/get_data")
 def get_data():
-    oracion_raw = " ".join(estado_app["palabras"]) if estado_app["palabras"] else "..."
-    return jsonify({
-        "palabras": estado_app["palabras"],
-        "oracion_mejorada": estado_app["oracion_mejorada"],
-        "estado_ia": estado_app["estado_ia"],
-        "manos": estado_app["manos_detectadas"],
-        "confianza": estado_app["confianza_actual"],
-        "ultima_signo": estado_app["ultima_deteccion"],
-        "oracion_raw": oracion_raw
-    })
+    email = session.get("user_email")
+    if not email:
+        return jsonify(success=False), 401
+    with _state_lock:
+        state = _state(email).copy()
+    return jsonify(palabras=state["palabras"], oracion_mejorada=state["oracion_mejorada"], estado_ia=state["estado_ia"], error_ia=state["error_ia"], camera_error=state["camera_error"], manos=state["manos_detectadas"], confianza=state["confianza_actual"], ultima_signo=state["ultima_deteccion"], oracion_raw="".join(state["palabras"]) or "...")
 
-@app.route('/accion', methods=['POST'])
+@app.post("/accion")
 def accion():
-    try:
-        # Validación básica
-        if not request.is_json:
-            return jsonify({"status": "error", "message": "JSON requerido"}), 400
+    email = session.get("user_email")
+    if not email:
+        return jsonify(status="error", message="Sesión expirada"), 401
+    data = request.get_json(silent=True)
+    if not data or data.get("tipo") not in {"limpiar", "espacio", "mejorar"}:
+        return jsonify(status="error", message="Acción inválida"), 400
+    state = _state(email)
+    with _state_lock:
+        action = data["tipo"]
+        if action == "limpiar":
+            state.update(palabras=[], oracion_mejorada="", estado_ia="idle", error_ia="", confianza_actual=0, ultima_deteccion="-", contador=0, ultima_palabra=None)
+        elif action == "espacio":
+            if state["palabras"] and state["palabras"][-1] != " ":
+                state["palabras"].append(" ")
+        else:
+            source = "".join(state["palabras"]).strip()
+            if not source:
+                return jsonify(status="error", message="Primero agregá una seña"), 400
+            with _ia_lock:
+                if email in _ia_jobs:
+                    return jsonify(status="error", message="Ya estamos mejorando una oración"), 409
+                _ia_jobs.add(email)
+            state["estado_ia"] = "cargando"
+            state["error_ia"] = ""
+            threading.Thread(target=_mejorar_oracion, args=(email, source), daemon=True).start()
+    return jsonify(status="ok")
 
-        req = request.json
-        tipo = req.get('tipo')
-        
-        if tipo == 'limpiar':
-            estado_app["palabras"] = []
-            estado_app["confianza_actual"] = ""
-            estado_app["oracion_mejorada"] = ""
-            estado_app["estado_ia"] = "idle"
-            estado_app["ultima_deteccion"] = "-"
-            variables_control["contador_misma_palabra"] = 0
-            
-        elif tipo == 'espacio':
-            estado_app["palabras"].append(" ")
-            
-        elif tipo == 'mejorar':
-            if estado_app["palabras"]:
-                user_email = session.get('user_email')
-                
-                if user_email:
-                    threading.Thread(
-                        target=consultar_chatgpt_async, 
-                        args=(app, user_email) 
-                    ).start()
-                else:
-                    print("⚠️ Intento de mejorar oración sin usuario en sesión")
-                    return jsonify({"status": "error", "message": "Sesión expirada"}), 401
-                    
-        return jsonify({"status": "ok"})
-
-    except Exception as e:
-        print(f"❌ ERROR CRÍTICO EN /accion: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-    
-# === RUTAS DE HISTORIAL (API) ===
-
-@app.route('/api/historial', methods=['GET'])
+@app.get("/api/historial")
 def get_historial_api():
-    if 'user_email' not in session:
-        return jsonify([])
-    
-    mensajes = HistorialMensaje.query.filter_by(email=session['user_email'])\
-        .order_by(HistorialMensaje.fecha_hora.desc()).limit(20).all()
-        
-    return jsonify([m.to_json() for m in mensajes])
+    email = session.get("user_email")
+    if not email:
+        return jsonify(success=False, message="Sesión expirada"), 401
+    messages = HistorialMensaje.query.filter_by(email=email).order_by(HistorialMensaje.fecha_hora.desc()).limit(20).all()
+    return jsonify([message.to_json() for message in messages])
 
-@app.route('/api/historial/<int:id>', methods=['DELETE'])
-def delete_historial_api(id):
-    if 'user_email' not in session:
-        return jsonify({"success": False}), 401
-    
-    exito = borrar_mensaje(id, session['user_email'])
-    if exito:
-        return jsonify({"success": True})
-    else:
-        return jsonify({"success": False, "message": "Error al borrar"}), 400
+@app.delete("/api/historial/<int:message_id>")
+def delete_historial_api(message_id):
+    email = session.get("user_email")
+    if not email:
+        return jsonify(success=False, message="Sesión expirada"), 401
+    if not borrar_mensaje(message_id, email):
+        return jsonify(success=False, message="Mensaje inexistente"), 404
+    return jsonify(success=True)
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+@app.get("/health")
+def health():
+    try:
+        db.session.execute(text("SELECT 1"))
+        return jsonify(status="ok", database="ok", model="ready" if model is not None else "unavailable")
+    except SQLAlchemyError:
+        app.logger.exception("Health check de base de datos falló")
+        return jsonify(status="error", database="unavailable"), 503
+
+if __name__ == "__main__":
+    app.run(host=os.getenv("HOST", "127.0.0.1"), port=int(os.getenv("PORT", "5000")), debug=False)

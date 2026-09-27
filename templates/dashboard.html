@@ -8,8 +8,8 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { width: 100%; height: 100%; overflow: hidden; }
-        body { font-family: 'Inter', sans-serif; background-color: #f8f9fa; } /* Fondo general muy claro */
+        html, body { width: 100%; min-height: 100%; }
+        body { font-family: 'Inter', sans-serif; background-color: #f8f9fa; }
 
         /* HEADER VERDE */
         header {
@@ -68,6 +68,8 @@
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
         #video-stream { width: 100%; height: 100%; object-fit: contain; }
+        .camera-error { display: none; position: absolute; inset: 0; padding: 24px; align-items: center; justify-content: center; text-align: center; color: white; background: rgba(0,0,0,.82); line-height: 1.5; }
+        .camera-error.show { display: flex; }
         
         .stats-bar { display: flex; justify-content: center; gap: 60px; margin-bottom: 20px; font-size: 14px; font-weight: 500; }
         .stat-item { display: flex; align-items: center; gap: 6px; color: #333; }
@@ -210,6 +212,17 @@
             }
         }
 
+        @media (max-width: 640px) {
+            header { padding: 12px 16px; }
+            .logo-center img { height: 36px; }
+            .main-container { padding: 20px 14px; height: auto; }
+            h1 { font-size: 1.55rem; }
+            .stats-bar { flex-wrap: wrap; gap: 10px 20px; }
+            .button-row { flex-wrap: wrap; gap: 8px; }
+            .btn { padding: 10px 14px; font-size: 14px; }
+            .history-sidebar { max-width: 100%; }
+        }
+
         /* ESTILOS DEL MODAL */
         .modal-overlay {
             display: none;
@@ -292,6 +305,7 @@
 
                 <div class="video-container">
                     <img id="video-stream" src="{{ url_for('video_feed') }}" alt="Cámara">
+                    <div id="camera-error" class="camera-error" role="status"></div>
                 </div>
 
                 <div class="stats-bar">
@@ -378,11 +392,14 @@
                 document.getElementById('confianza-value').innerText = (data.confianza || 0) + '%';
                 document.getElementById('ultima-sena').innerText = data.ultima_signo || '-';
                 document.getElementById('oracion-detectada').innerText = data.oracion_raw || '...';
+                const cameraError = document.getElementById('camera-error');
+                cameraError.textContent = data.camera_error || '';
+                cameraError.classList.toggle('show', Boolean(data.camera_error));
                 
                 const iaBox = document.getElementById('traduccion-ia');
                 
                 if (data.estado_ia === 'cargando') {
-                    iaBox.innerText = '⏳ Consultando a ChatGPT...';
+                    iaBox.innerText = '⏳ Mejorando con IA local...';
                     iaBox.style.backgroundColor = '#fff7ed';
                     iaBox.style.color = '#c2410c';
                 } else if (data.estado_ia === 'listo') {
@@ -393,6 +410,10 @@
                     if (ultimoEstadoIA !== 'listo') {
                         cargarHistorial(); 
                     }
+                } else if (data.estado_ia === 'error') {
+                    iaBox.innerText = data.error_ia || 'No se pudo completar la solicitud. Revisá la consola del servidor.';
+                    iaBox.style.backgroundColor = '#fef2f2';
+                    iaBox.style.color = '#b91c1c';
                 } else {
                     iaBox.innerText = 'Esperando petición...';
                     iaBox.style.backgroundColor = '#f9fafb';
@@ -433,17 +454,23 @@
                     const div = document.createElement('div');
                     div.className = 'history-item';
                     
-                    // Estructura mejorada: Mensaje arriba, Pie de pagina (Fecha + Icono) abajo
-                    div.innerHTML = `
-                        <div class="history-message-text">${item.mensaje}</div>
-                        
-                        <div class="history-item-footer">
-                            <span class="history-date">${item.fecha}</span>
-                            <span class="history-delete" onclick="eliminarHistorial(${item.id})" title="Eliminar">
-                                <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
-                            </span>
-                        </div>
-                    `;
+                    const message = document.createElement('div');
+                    message.className = 'history-message-text';
+                    message.textContent = item.mensaje;
+                    const footer = document.createElement('div');
+                    footer.className = 'history-item-footer';
+                    const date = document.createElement('span');
+                    date.className = 'history-date';
+                    date.textContent = item.fecha;
+                    const remove = document.createElement('button');
+                    remove.type = 'button';
+                    remove.className = 'history-delete';
+                    remove.title = 'Eliminar mensaje';
+                    remove.setAttribute('aria-label', 'Eliminar mensaje');
+                    remove.innerHTML = '<i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>';
+                    remove.addEventListener('click', () => eliminarHistorial(item.id));
+                    footer.append(date, remove);
+                    div.append(message, footer);
                     contenedor.appendChild(div);
                 });
                 
@@ -510,10 +537,9 @@
                     body: JSON.stringify({ tipo: tipo })
                 });
                 
-                if (!res.ok && res.status === 401) {
-                    alert("Sesión expirada.");
-                    window.location.href = '/';
-                }
+                const data = await res.json();
+                if (res.status === 401) window.location.href = '/';
+                else if (!res.ok) alert(data.message || 'No se pudo completar la acción.');
             } catch (e) { console.error("Error de red:", e); }
         }
 
