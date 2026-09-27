@@ -11,6 +11,7 @@ import hmac
 import smtplib
 import threading
 import time
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
@@ -32,6 +33,27 @@ from Models.UserModels import GoogleAccount, PasswordResetCode, User, autenticar
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
+
+# Una grabación de referencia (participante 1, repetición 1) por cada clase LSA64.
+LSA64_VIDEO_IDS = {
+    "opaco": 1, "rojo": 2, "verde": 3, "amarillo": 4, "brillante": 5, "azul claro": 6,
+    "bandera": 7, "rosa": 8, "mujer": 9, "enemigo": 10, "hijo": 11, "hombre": 12,
+    "lejos": 13, "cajon": 14, "nacido": 15, "aprender": 16, "llamar": 17,
+    "desnatadora": 18, "amargo": 19, "dulce de leche": 20, "leche": 21, "agua": 22,
+    "comida": 23, "argentina": 24, "uruguay": 25, "pais": 26, "apellido": 27, "donde": 28,
+    "imitar": 29, "cumpleanos": 30, "desayuno": 31, "foto": 32, "hambriento": 33,
+    "mapa": 34, "acunar": 35, "musica": 36, "barco": 37, "ninguno": 38, "nombre": 39,
+    "paciencia": 40, "perfume": 41, "sordo": 42, "trampa": 43, "arroz": 44,
+    "parrilla": 45, "dulce": 46, "chicle": 47, "fideos": 48, "yogur": 49, "aceptar": 50,
+    "gracias": 51, "cerrar": 52, "aparecer": 53, "aterrizar": 54, "atrapar": 55,
+    "ayuda": 56, "bailar": 57, "banarse": 58, "comprar": 59, "copiar": 60, "correr": 61,
+    "darse cuenta": 62, "dar": 63, "encontrar": 64,
+}
+
+
+def _normalizar_nombre_sena(label):
+    decomposed = unicodedata.normalize("NFD", str(label).casefold())
+    return "".join(char for char in decomposed if unicodedata.category(char) != "Mn")
 
 app = Flask(__name__)
 app.config.update(
@@ -236,7 +258,8 @@ def generar_frames(email):
                         else:
                             left, has_left = extraer_landmarks_mano(landmarks), 1
                     try:
-                        prediction = model(np.asarray([left + right + [has_left, has_right]], dtype=np.float32), training=False).numpy()[0]
+                        vector = np.asarray([left + right + [has_left, has_right]], dtype=np.float32)
+                        prediction = model(vector, training=False).numpy()[0]
                         probability, index = float(np.max(prediction)), int(np.argmax(prediction))
                         state["confianza_actual"] = round(probability * 100)
                         if probability >= 0.75:
@@ -473,7 +496,17 @@ def logout():
 def dashboard():
     if not session.get("user_email"):
         return redirect(url_for("login_page"))
-    return render_template("dashboard.html", username=session.get("username"))
+    practice_videos = {}
+    for label in etiquetas:
+        sign_id = LSA64_VIDEO_IDS.get(_normalizar_nombre_sena(label))
+        if sign_id is not None:
+            practice_videos[str(label)] = url_for("static", filename=f"videos/lsa64/{sign_id:03}.mp4")
+    return render_template(
+        "dashboard.html",
+        username=session.get("username"),
+        labels=[str(label) for label in etiquetas],
+        practice_videos=practice_videos,
+    )
 
 @app.get("/video_feed")
 def video_feed():
@@ -488,7 +521,7 @@ def get_data():
         return jsonify(success=False), 401
     with _state_lock:
         state = _state(email).copy()
-    return jsonify(palabras=state["palabras"], oracion_mejorada=state["oracion_mejorada"], estado_ia=state["estado_ia"], error_ia=state["error_ia"], camera_error=state["camera_error"], manos=state["manos_detectadas"], confianza=state["confianza_actual"], ultima_signo=state["ultima_deteccion"], oracion_raw="".join(state["palabras"]) or "...")
+    return jsonify(palabras=state["palabras"], oracion_mejorada=state["oracion_mejorada"], estado_ia=state["estado_ia"], error_ia=state["error_ia"], camera_error=state["camera_error"], manos=state["manos_detectadas"], confianza=state["confianza_actual"], ultima_signo=state["ultima_deteccion"], oracion_raw="".join(state["palabras"]) or "...", modelo=model is not None)
 
 @app.post("/accion")
 def accion():
