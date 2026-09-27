@@ -10,6 +10,7 @@ labels.pkl
 LSA/
 # Carpetas y archivos de caché de Python
 venv/
+.venv/
 __pycache__/
 .idea/
 .vscode/
@@ -20,3 +21,5 @@ __pycache__/
 *.CSV
 dataset_manos_lsa_v2.csv
 dataset_manos_lsa_v2_con_palabras.csv
+dataset_lsa64_temporal.npz
+modelos/lsa64/*.keras

@@ -58,12 +58,24 @@ COOKIE_SECURE=false
 ## Estructura
 
 - `app.py`: servidor Flask, cámara, inferencia y API.
+- `entrenar_lsa64_temporal.py`: extracción de secuencias y entrenamiento temporal opcional.
+- `static/videos/lsa64/`: ejemplos locales para el modo práctica (64 videos, aproximadamente 43 MB). Ver [ATRIBUCION_LSA64.md](ATRIBUCION_LSA64.md) para la fuente y licencia.
 - `Models/`: usuarios e historial SQLAlchemy.
 - `templates/` y `static/`: interfaz.
 - `modelo_gestos_v2.h5`, `labels_v2.pkl`: modelo y etiquetas usados en ejecución.
 - `preprocesamiento.py`, `entrenamiento.py`, `deteccion.py`: herramientas del flujo de datos y entrenamiento.
 
-Los scripts de entrenamiento requieren un dataset de videos propio, no incluido en el repositorio. `DATASET_DIR` se configura en el entorno para indicar su carpeta. Las muestras deben conservar las 128 características que espera el modelo: 63 coordenadas por mano y dos indicadores de presencia.
+Los scripts de entrenamiento existentes trabajan con señas estáticas. Para entrenar con movimiento, se puede usar el conjunto LSA64: descarga los videos desde [la página del dataset](https://facundoq.github.io/datasets/lsa64/) y conserva el ZIP original. El conjunto contiene videos de 64 señas realizadas por 10 participantes y está publicado bajo licencia CC BY-NC-SA 4.0: úsalo solo de forma no comercial, atribuye a sus autores y comparte derivados bajo la misma licencia. Para uso comercial hace falta autorización de los titulares.
+
+Con un entorno virtual que tenga instaladas las dependencias de `requirements.txt`, ejecutá desde PowerShell:
+
+```powershell
+python entrenar_lsa64_temporal.py --archive "$HOME\Downloads\lsa64_raw.zip"
+```
+
+El preprocesamiento conserva 32 fotogramas por video y extrae los landmarks de ambas manos. Guarda un checkpoint en `dataset_lsa64_temporal.npz` cada 100 videos, por lo que se puede interrumpir y reanudar ejecutando el mismo comando. Se entrena con los participantes 1–8, se valida con el 9 y se reserva el 10 para la prueba. El modelo experimental y las métricas quedan en `modelos/lsa64/`. La aplicación en vivo sigue usando `modelo_gestos_v2.h5` y `labels_v2.pkl`; el modelo temporal no está conectado a la inferencia de la app.
+
+La evaluación con una persona reservada mide generalización a ese participante, pero una única partición no alcanza para afirmar que el modelo funcione igual con cualquier persona, iluminación o cámara. LSA64 contiene señas aisladas, así que este modelo tampoco resuelve todavía traducción continua ni gramática completa de LSA.
 
 ## Privacidad y operación
 
