@@ -4,6 +4,7 @@ Configuración por variables de entorno: SECRET_KEY, DATABASE_URL y OLLAMA_BASE_
 """
 import os
 import pickle
+import secrets
 import threading
 import time
 from pathlib import Path
@@ -14,12 +15,14 @@ import numpy as np
 import requests
 import tensorflow as tf
 from dotenv import load_dotenv
-from flask import Flask, Response, jsonify, redirect, render_template, request, session, url_for
+from authlib.integrations.base_client.errors import OAuthError
+from authlib.integrations.flask_client import OAuth
+from flask import Flask, Response, flash, jsonify, redirect, render_template, request, session, url_for
 from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from Models.HistorialModels import HistorialMensaje, borrar_mensaje, guardar_historial
-from Models.UserModels import autenticar_usuario, crear_usuario, db
+from Models.UserModels import GoogleAccount, User, autenticar_usuario, crear_usuario, db
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
@@ -35,6 +38,16 @@ app.config.update(
     MAX_CONTENT_LENGTH=16 * 1024,
 )
 db.init_app(app)
+oauth = OAuth(app)
+google_login_enabled = bool(os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET"))
+if google_login_enabled:
+    oauth.register(
+        name="google",
+        client_id=os.getenv("GOOGLE_CLIENT_ID"),
+        client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        client_kwargs={"scope": "openid email profile"},
+    )
 with app.app_context():
     db.create_all()
 
@@ -193,9 +206,41 @@ def generar_frames(email):
         finally:
             cap.release()
 
+def _usuario_google(google_sub, email, display_name):
+    linked_account = GoogleAccount.query.filter_by(google_sub=google_sub).first()
+    if linked_account:
+        user = User.query.filter_by(email=linked_account.email).first()
+        if user:
+            return user
+        raise ValueError("La cuenta de Google está vinculada a un usuario que ya no existe")
+
+    user = User.query.filter_by(email=email).first()
+    if user is None:
+        base_name = (display_name or email.partition("@")[0]).strip()[:100] or "Usuario"
+        username, suffix = base_name, 2
+        while User.query.filter_by(nombre=username).first():
+            suffix_text = f" ({suffix})"
+            username = f"{base_name[:100 - len(suffix_text)]}{suffix_text}"
+            suffix += 1
+        user = User(email=email, nombre=username)
+        user.set_password(secrets.token_urlsafe(48))
+        db.session.add(user)
+        db.session.flush()
+
+    db.session.add(GoogleAccount(google_sub=google_sub, email=user.email))
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        linked_account = GoogleAccount.query.filter_by(google_sub=google_sub).first()
+        user = User.query.filter_by(email=linked_account.email).first() if linked_account else None
+        if user is None:
+            raise
+    return user
+
 @app.get("/")
 def login_page():
-    return redirect(url_for("dashboard")) if session.get("user_email") else render_template("login.html")
+    return redirect(url_for("dashboard")) if session.get("user_email") else render_template("login.html", google_login_enabled=google_login_enabled)
 
 @app.get("/register")
 def register_page():
@@ -226,6 +271,40 @@ def api_register():
         return jsonify(success=False, message="La contraseña debe tener al menos 8 caracteres"), 400
     success, message = crear_usuario(name.strip(), email.strip(), password)
     return jsonify(success=success, message=message), (201 if success else 400)
+
+@app.get("/auth/google")
+def google_login():
+    if not google_login_enabled:
+        flash("El inicio con Google todavía no está configurado. Agregá GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET al archivo .env.")
+        return redirect(url_for("login_page"))
+    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI") or url_for("google_callback", _external=True)
+    return oauth.google.authorize_redirect(redirect_uri)
+
+@app.get("/auth/google/callback")
+def google_callback():
+    if not google_login_enabled:
+        return redirect(url_for("login_page"))
+    try:
+        token = oauth.google.authorize_access_token()
+        claims = token.get("userinfo") or oauth.google.userinfo()
+        email = claims.get("email", "").strip().lower()
+        google_sub = claims.get("sub")
+        if not email or not google_sub or claims.get("email_verified") is not True:
+            flash("Google no devolvió un correo verificado. No se inició sesión.")
+            return redirect(url_for("login_page"))
+        user = _usuario_google(google_sub, email, claims.get("name", ""))
+        session.clear()
+        session.update(user_email=user.email, username=user.nombre)
+        return redirect(url_for("dashboard"))
+    except OAuthError as error:
+        db.session.rollback()
+        app.logger.warning("Falló el flujo de inicio de sesión de Google: %s", error.error)
+        flash("No se pudo completar el inicio de sesión con Google. Intentá nuevamente.")
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Error procesando el inicio de sesión de Google")
+        flash("Ocurrió un error al iniciar sesión con Google.")
+    return redirect(url_for("login_page"))
 
 @app.get("/logout")
 def logout():

@@ -50,6 +50,13 @@
         }
         .btn-login:hover { background-color: #004d2e; }
         .btn-login:active { transform: scale(0.98); }
+        .login-divider { display: flex; align-items: center; gap: 14px; margin: 22px 0; color: #6b7280; font-size: .9rem; }
+        .login-divider::before, .login-divider::after { content: ''; flex: 1; height: 1px; background: #cfd2d5; }
+        .google-login { display: flex; justify-content: center; align-items: center; gap: 12px; width: 100%; padding: 13px 16px; border: 1px solid #dadce0; border-radius: 8px; background: #fff; color: #3c4043; text-decoration: none; font-size: 1rem; font-weight: 600; transition: background .2s, box-shadow .2s; }
+        .google-login:hover { background: #f8faff; box-shadow: 0 1px 3px rgba(60,64,67,.2); }
+        .google-mark { color: #4285f4; font-size: 1.25rem; font-weight: 700; }
+        .google-unavailable { display: block; margin-top: 9px; color: #6b7280; font-size: .8rem; text-align: center; }
+        .auth-message { margin: -20px 0 24px; padding: 12px 14px; border-radius: 8px; background: #fff7ed; color: #9a3412; font-size: .9rem; line-height: 1.45; }
         .register-section { text-align: center; margin-top: 20px; font-size: 0.95rem; color: #333; }
         .register-link { color: #333; font-weight: 600; text-decoration: underline; cursor: pointer; margin-left: 5px; }
         .register-link:hover { color: #00683e; }
@@ -68,6 +75,12 @@
 
         <h1>Iniciar Sesión</h1>
 
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div class="auth-message" role="alert">{{ messages[-1] }}</div>
+            {% endif %}
+        {% endwith %}
+
         <form id="loginForm">
             <div class="form-group">
                 <label for="email">Correo electrónico o usuario</label>
@@ -84,6 +97,20 @@
 
             <button type="submit" class="btn-login">Iniciar Sesión</button>
         </form>
+
+        <div class="login-divider"><span>o</span></div>
+        {% if google_login_enabled %}
+            <a href="{{ url_for('google_login') }}" class="google-login">
+                <span class="google-mark" aria-hidden="true">G</span>
+                Continuar con Google
+            </a>
+        {% else %}
+            <span class="google-login" aria-disabled="true" style="opacity:.6; cursor:not-allowed;">
+                <span class="google-mark" aria-hidden="true">G</span>
+                Continuar con Google
+            </span>
+            <small class="google-unavailable">Requiere configurar OAuth de Google en el servidor.</small>
+        {% endif %}
 
         <div class="register-section">
             No tiene cuenta?

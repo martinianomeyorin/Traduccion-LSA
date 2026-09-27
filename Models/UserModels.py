@@ -35,6 +35,14 @@ class User(db.Model):
             "fecha_alta": fecha_local.strftime('%Y-%m-%d %H:%M:%S')
         }
 
+
+class GoogleAccount(db.Model):
+    """Vincula un usuario local con el identificador estable de Google (sub)."""
+    __tablename__ = "cuentas_google"
+
+    google_sub = db.Column(db.String(255), primary_key=True)
+    email = db.Column(db.String(255), db.ForeignKey("usuarios.email", ondelete="CASCADE"), nullable=False, index=True)
+
 # --- MÉTODOS AUXILIARES ---
 
 def crear_usuario(nombre, email, password):

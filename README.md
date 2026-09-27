@@ -29,7 +29,13 @@ Editá `.env` y configurá `SECRET_KEY` y, si corresponde, `DATABASE_URL`. En de
 python app.py
 ```
 
-Abrí <http://127.0.0.1:5000>. La tabla se crea al iniciar si no existe. Para seleccionar otra cámara, definí `CAMERA_INDEX` (por defecto `0`). `OLLAMA_BASE_URL`, `OLLAMA_MODEL` y `OLLAMA_TIMEOUT_SECONDS` configuran el servicio local de IA. `COOKIE_SECURE=true` debe usarse cuando la aplicación está detrás de HTTPS. `HOST` y `PORT` permiten ajustar la interfaz de escucha.
+Abrí <http://127.0.0.1:5000>. La tabla se crea al iniciar si no existe. Para seleccionar otra cámara, definí `CAMERA_INDEX` (por defecto `2`, luego prueba los índices `0` y `1`). `OLLAMA_BASE_URL`, `OLLAMA_MODEL` y `OLLAMA_TIMEOUT_SECONDS` configuran el servicio local de IA. `COOKIE_SECURE=true` debe usarse cuando la aplicación está detrás de HTTPS. `HOST` y `PORT` permiten ajustar la interfaz de escucha.
+
+## Inicio de sesión con Google
+
+Para habilitarlo, creá un cliente OAuth de tipo **Aplicación web** en Google Cloud Console. Configurá como URI de redireccionamiento autorizado `http://127.0.0.1:5000/auth/google/callback`, copiá el ID y el secreto del cliente en `GOOGLE_CLIENT_ID` y `GOOGLE_CLIENT_SECRET` dentro de `.env`, y reiniciá Flask. Entrá a la aplicación usando `http://127.0.0.1:5000` para que el dominio coincida con el callback. Si la pantalla de consentimiento está en modo de prueba, agregá tu cuenta Google como usuario de prueba. Para publicar la app, usá un callback HTTPS con el dominio público exacto.
+
+El ingreso usa OpenID Connect y requiere que Google confirme que el correo está verificado. Las cuentas locales existentes con el mismo correo verificado se vinculan automáticamente; los nuevos usuarios se crean al primer ingreso. Se guarda el identificador estable de Google en la tabla `cuentas_google`.
 
 Ejemplo de configuración para PostgreSQL:
 
