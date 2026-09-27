@@ -251,6 +251,15 @@ def _mejorar_oracion(email, oracion):
         with _state_lock:
             state = _state(email)
             state["oracion_mejorada"], state["estado_ia"], state["error_ia"] = mejorada, "listo", ""
+            oracion_pendiente = oracion.strip()
+            oracion_actual = "".join(state["palabras"]).strip()
+            if oracion_actual == oracion_pendiente:
+                state["palabras"] = []
+            elif oracion_actual.startswith(oracion_pendiente):
+                palabras_nuevas = oracion_actual[len(oracion_pendiente):].strip()
+                state["palabras"] = [palabras_nuevas] if palabras_nuevas else []
+            if not state["palabras"]:
+                state["contador"], state["ultima_palabra"] = 0, None
         with app.app_context():
             if not guardar_historial(email, mejorada):
                 app.logger.error("No se pudo guardar el historial para %s", email)
