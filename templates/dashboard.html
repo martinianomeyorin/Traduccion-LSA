@@ -290,8 +290,8 @@
         .logo-copy span { font-size:10px; color:rgba(255,255,255,.8); }
         .header-actions { display:flex; align-items:center; gap:10px; justify-self:end; grid-column:3; }
         .user-menu-wrapper { margin-left:0; justify-self:start; grid-column:1; grid-row:1; }
-        .user-info { border:1px solid rgba(255,255,255,.25); border-radius:999px; padding:8px 12px; background:rgba(255,255,255,.1); color:white; }
-        .user-info:hover { background:rgba(255,255,255,.18); }
+        .user-info { display:grid; place-items:center; width:40px; height:40px; padding:0; border:1px solid rgba(255,255,255,.25); border-radius:50%; background:transparent; color:white; cursor:pointer; }
+        .user-info:hover, .user-info[aria-expanded="true"] { background:rgba(255,255,255,.16); }
         .theme-toggle { display:grid; place-items:center; width:38px; height:38px; border:1px solid rgba(255,255,255,.25); border-radius:11px; background:rgba(255,255,255,.1); color:#fff; cursor:pointer; transition:background .2s, transform .2s; }
         .theme-toggle:hover { background:rgba(255,255,255,.2); transform:translateY(-1px); }
         .dropdown-menu { left:auto; right:0; }
@@ -359,6 +359,20 @@
         .challenge-word { color:var(--green-dark); font-size:25px; letter-spacing:-.04em; font-weight:800; }
         .challenge-feedback { margin-top:4px; color:var(--muted); font-size:12px; }
         .practice-score { margin-left:auto; padding:8px 11px; border-radius:10px; background:#eff7f2; color:#176847; font-size:12px; font-weight:750; white-space:nowrap; }
+        .achievements-card { margin:0 0 20px; padding:18px; }
+        .achievements-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:6px; }
+        .achievements-title { display:flex; align-items:center; gap:9px; font-size:16px; font-weight:800; }
+        .achievements-count { color:var(--muted); font-size:11px; font-weight:650; }
+        .achievements-summary { color:var(--muted); font-size:12px; margin-bottom:14px; }
+        .achievements-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(155px,1fr)); gap:9px; }
+        .achievement-item { min-width:0; padding:12px; border:1px solid var(--line); border-radius:12px; background:#f8faf8; }
+        .achievement-item.unlocked { border-color:#a9d7b8; background:linear-gradient(145deg,#eff9f2,#e3f3e8); }
+        .achievement-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; color:var(--muted); }
+        .achievement-item.unlocked .achievement-top { color:var(--green); }
+        .achievement-title { font-size:12px; line-height:1.35; font-weight:750; color:var(--ink); }
+        .achievement-description { min-height:30px; margin-top:4px; color:var(--muted); font-size:10px; line-height:1.45; }
+        .achievement-progress { height:5px; margin-top:9px; border-radius:9px; overflow:hidden; background:#e7ede9; }
+        .achievement-progress span { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg,#6cc88f,#08734d); transition:width .3s ease; }
         .history-toolbar { display:flex; gap:6px; }
         .tool-button { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:38px; padding:0 12px; border:1px solid var(--line); border-radius:10px; background:#fff; color:#45574d; font-size:12px; font-weight:650; cursor:pointer; }
         .tool-button:hover { border-color:#acd0ba; background:#f7fbf8; color:var(--green-dark); }
@@ -411,6 +425,10 @@
         body[data-theme="dark"] .history-icon-button { color:#a8b9ae; }
         body[data-theme="dark"] .history-icon-button:hover { background:#26392d; color:#a8e0bb; }
         body[data-theme="dark"] .practice-score { background:#183d2c; color:#9ce0b6; }
+        body[data-theme="dark"] .achievement-item { background:#131c16; border-color:#2b3a31; }
+        body[data-theme="dark"] .achievement-item.unlocked { background:linear-gradient(145deg,#183d2c,#1c3325); border-color:#376647; }
+        body[data-theme="dark"] .achievement-title { color:#e6eee8; }
+        body[data-theme="dark"] .achievement-progress { background:#2c3a31; }
         body[data-theme="dark"] .practice-challenge { border-color:#2b3a31; }
         body[data-theme="dark"] .challenge-word { color:#a8e0bb; }
         body[data-theme="dark"] .dictionary-modal .modal-box, body[data-theme="dark"] .modal-box { background:#18231c; color:#e6eee8; }
@@ -446,8 +464,9 @@
             .logo-copy span { font-size:8px; }
             .header-actions { gap:5px; }
             .theme-toggle { width:34px; height:34px; }
-            .user-info { padding:7px 8px; gap:5px; font-size:11px; }
-            .user-info > i:first-child { width:18px !important; }
+            .user-info { width:36px; height:36px; }
+            .achievements-card { padding:14px; }
+            .achievements-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
             .main-container { min-height:calc(100vh - 64px); padding:22px 12px 36px; }
             .page-heading { align-items:flex-start; }
             .page-heading h1 { font-size:24px; }
@@ -483,11 +502,9 @@
             <span class="logo-copy"><strong>Traductor LSA</strong><span>Lengua de Señas Argentina</span></span>
         </div>
         <div class="user-menu-wrapper" id="userMenuBtn">
-            <div class="user-info">
-                <i data-lucide="user" style="width: 22px; height: 22px;"></i>
-                <span>{{ username if username else 'Usuario' }}</span>
-                <i data-lucide="chevron-down" style="width: 16px; height: 16px;"></i>
-            </div>
+            <button class="user-info" id="userMenuToggle" type="button" aria-label="Abrir menú de usuario de {{ username if username else 'Usuario' }}" aria-haspopup="true" aria-expanded="false" aria-controls="userDropdown">
+                <i data-lucide="user-round" width="19" aria-hidden="true"></i>
+            </button>
             <div class="dropdown-menu" id="userDropdown">
                 <a href="/logout" class="dropdown-item">
                     <i data-lucide="log-out" style="width: 18px; height: 18px;"></i>
@@ -553,6 +570,15 @@
                         <div class="practice-score" id="practice-score">Aciertos: 0</div>
                         <button class="tool-button" type="button" onclick="detenerPractica()"><i data-lucide="x" width="15"></i> Salir</button>
                     </div>
+                </section>
+
+                <section class="achievements-card panel-card" aria-labelledby="achievements-title">
+                    <div class="achievements-heading">
+                        <div class="achievements-title" id="achievements-title"><i data-lucide="trophy" width="18"></i> Mis logros</div>
+                        <span class="achievements-count" id="achievements-count">Cargando…</span>
+                    </div>
+                    <p class="achievements-summary" id="achievements-summary">Cada seña distinta cuenta una vez por día. ¡Completá la colección!</p>
+                    <div class="achievements-grid" id="achievements-grid" aria-live="polite"></div>
                 </section>
 
                 <div class="output-section">
@@ -667,6 +693,75 @@
             toast.classList.add('show');
             clearTimeout(mostrarToast.timeout);
             mostrarToast.timeout = setTimeout(() => toast.classList.remove('show'), 2200);
+        }
+
+        function renderizarLogros(progreso) {
+            const grid = document.getElementById('achievements-grid');
+            const achievements = progreso.achievements || [];
+            document.getElementById('achievements-count').textContent = `${progreso.unlocked_count}/${achievements.length} desbloqueados`;
+            document.getElementById('achievements-summary').textContent =
+                `Hoy: ${progreso.today_count} señas distintas · Racha actual: ${progreso.current_streak} ${progreso.current_streak === 1 ? 'día' : 'días'} · Mejor día: ${progreso.best_day} señas`;
+            grid.replaceChildren(...achievements.map(item => {
+                const card = document.createElement('article');
+                card.className = `achievement-item${item.unlocked ? ' unlocked' : ''}`;
+                const top = document.createElement('div');
+                top.className = 'achievement-top';
+                const icon = document.createElement('i');
+                icon.dataset.lucide = item.unlocked ? 'badge-check' : (item.category === 'daily' ? 'target' : 'calendar-days');
+                icon.setAttribute('width', '17');
+                const state = document.createElement('span');
+                state.textContent = item.unlocked ? 'Desbloqueado' : `${item.progress}/${item.threshold}`;
+                top.append(icon, state);
+                const title = document.createElement('div');
+                title.className = 'achievement-title';
+                title.textContent = item.title;
+                const description = document.createElement('div');
+                description.className = 'achievement-description';
+                description.textContent = item.description;
+                card.append(top, title, description);
+                if (!item.unlocked) {
+                    const track = document.createElement('div');
+                    track.className = 'achievement-progress';
+                    const fill = document.createElement('span');
+                    fill.style.width = `${Math.min(100, (item.progress / item.threshold) * 100)}%`;
+                    track.append(fill);
+                    card.append(track);
+                }
+                return card;
+            }));
+            lucide.createIcons();
+        }
+
+        async function cargarLogros() {
+            try {
+                const response = await fetch('/api/practica/logros');
+                if (!response.ok) throw new Error('No se pudieron cargar los logros');
+                renderizarLogros(await response.json());
+            } catch (error) {
+                document.getElementById('achievements-count').textContent = 'No disponible';
+                document.getElementById('achievements-summary').textContent = 'No se pudo cargar tu progreso. Volvé a intentarlo más tarde.';
+            }
+        }
+
+        async function registrarAciertoPractica(sena) {
+            try {
+                const response = await fetch('/api/practica/acierto', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({sena})
+                });
+                const progreso = await response.json();
+                if (!response.ok) throw new Error(progreso.message || 'No se pudo guardar el logro');
+                renderizarLogros(progreso);
+                for (const logro of progreso.newly_unlocked || []) {
+                    const mensaje = logro.category === 'daily'
+                        ? `¡Felicitaciones! Aprendiste ${logro.threshold} señas distintas en el modo práctica.`
+                        : `¡Felicitaciones! Practicaste señas ${logro.threshold} días consecutivos.`;
+                    mostrarToast(mensaje);
+                }
+            } catch (error) {
+                console.error('No se pudo actualizar el progreso de práctica:', error);
+            }
         }
 
         // Diccionario visual construido con las clases reales del modelo activo.
@@ -789,6 +884,7 @@
                 document.getElementById('practice-score').textContent = `Aciertos: ${practiceScore}`;
                 feedback.textContent = `¡Bien! El traductor reconoció “${detected}”.`;
                 feedback.style.color = '#08734d';
+                registrarAciertoPractica(practiceTarget);
                 clearTimeout(practiceTimer);
                 practiceTimer = setTimeout(async () => {
                     if (!practiceActive) return;
@@ -806,15 +902,27 @@
 
         // --- MENÚ DE USUARIO ---
         const menuBtn = document.getElementById('userMenuBtn');
+        const menuToggle = document.getElementById('userMenuToggle');
         const dropdown = document.getElementById('userDropdown');
 
         menuBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             dropdown.classList.toggle('show');
+            menuToggle.setAttribute('aria-expanded', dropdown.classList.contains('show') ? 'true' : 'false');
         });
 
         window.addEventListener('click', () => {
-            if (dropdown.classList.contains('show')) dropdown.classList.remove('show');
+            if (dropdown.classList.contains('show')) {
+                dropdown.classList.remove('show');
+                menuToggle.setAttribute('aria-expanded', 'false');
+            }
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && dropdown.classList.contains('show')) {
+                dropdown.classList.remove('show');
+                menuToggle.setAttribute('aria-expanded', 'false');
+                menuToggle.focus();
+            }
         });
 
         // --- POLLING DE DATOS ---
@@ -1031,7 +1139,10 @@
             return false;
         }
 
-        document.addEventListener('DOMContentLoaded', cargarHistorial);
+        document.addEventListener('DOMContentLoaded', () => {
+            cargarHistorial();
+            cargarLogros();
+        });
     </script>
 </body>
 </html>

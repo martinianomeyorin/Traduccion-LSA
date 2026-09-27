@@ -2,6 +2,7 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
+from sqlalchemy import UniqueConstraint
 
 # Inicializamos la extensión de base de datos
 db = SQLAlchemy()
@@ -52,6 +53,19 @@ class PasswordResetCode(db.Model):
     expires_at = db.Column(db.DateTime, nullable=False)
     last_sent_at = db.Column(db.DateTime, nullable=False)
     attempts = db.Column(db.Integer, nullable=False, default=0)
+
+
+class PracticeSign(db.Model):
+    """Una seña distinta practicada por usuario en una fecha local."""
+    __tablename__ = "senas_practicadas"
+    __table_args__ = (
+        UniqueConstraint("email", "practice_date", "sign_label", name="uq_practice_sign_per_day"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), db.ForeignKey("usuarios.email", ondelete="CASCADE"), nullable=False, index=True)
+    practice_date = db.Column(db.Date, nullable=False, index=True)
+    sign_label = db.Column(db.String(100), nullable=False)
 
 # --- MÉTODOS AUXILIARES ---
 

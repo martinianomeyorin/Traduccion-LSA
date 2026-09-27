@@ -15,6 +15,7 @@ import unicodedata
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import cv2
 import mediapipe as mp
@@ -29,7 +30,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from Models.HistorialModels import HistorialMensaje, borrar_mensaje, guardar_historial
-from Models.UserModels import GoogleAccount, PasswordResetCode, User, autenticar_usuario, crear_usuario, db, validar_password
+from Models.UserModels import GoogleAccount, PasswordResetCode, PracticeSign, User, autenticar_usuario, crear_usuario, db, validar_password
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
@@ -50,10 +51,63 @@ LSA64_VIDEO_IDS = {
     "darse cuenta": 62, "dar": 63, "encontrar": 64,
 }
 
+PRACTICE_DAY_MILESTONES = (10, 20, 30, 40, 50, 64)
+PRACTICE_STREAK_MILESTONES = (2, 3, 5, 7, 14, 30)
+ARGENTINA_TZ = ZoneInfo("America/Argentina/Buenos_Aires")
+
 
 def _normalizar_nombre_sena(label):
     decomposed = unicodedata.normalize("NFD", str(label).casefold())
     return "".join(char for char in decomposed if unicodedata.category(char) != "Mn")
+
+
+def _racha_maxima(dias):
+    mejor = actual = 0
+    anterior = None
+    for dia in sorted(dias):
+        actual = actual + 1 if anterior and (dia - anterior).days == 1 else 1
+        mejor = max(mejor, actual)
+        anterior = dia
+    return mejor
+
+
+def _progreso_practica(email):
+    registros = PracticeSign.query.filter_by(email=email).all()
+    conteos = {}
+    for registro in registros:
+        conteos.setdefault(registro.practice_date, set()).add(_normalizar_nombre_sena(registro.sign_label))
+
+    hoy = datetime.now(ARGENTINA_TZ).date()
+    cantidad_hoy = len(conteos.get(hoy, set()))
+    dias = set(conteos)
+    racha_maxima = _racha_maxima(dias)
+    inicio_racha = hoy if hoy in dias else hoy - timedelta(days=1)
+    racha_actual = 0
+    while inicio_racha in dias:
+        racha_actual += 1
+        inicio_racha -= timedelta(days=1)
+
+    mejor_dia = max((len(senas) for senas in conteos.values()), default=0)
+    logros = []
+    for umbral in PRACTICE_DAY_MILESTONES:
+        logros.append({
+            "id": f"day-{umbral}", "category": "daily", "title": f"Coleccionista de señas {umbral}",
+            "description": f"Aprendé {umbral} señas distintas en un día.", "threshold": umbral,
+            "progress": min(cantidad_hoy, umbral), "unlocked": mejor_dia >= umbral,
+        })
+    for umbral in PRACTICE_STREAK_MILESTONES:
+        logros.append({
+            "id": f"streak-{umbral}", "category": "streak", "title": f"Racha de {umbral} días",
+            "description": f"Practicá señas {umbral} días consecutivos.", "threshold": umbral,
+            "progress": min(racha_actual, umbral), "unlocked": racha_maxima >= umbral,
+        })
+    return {
+        "today_count": cantidad_hoy,
+        "best_day": mejor_dia,
+        "current_streak": racha_actual,
+        "unlocked_count": sum(1 for logro in logros if logro["unlocked"]),
+        "achievements": logros,
+    }
 
 app = Flask(__name__)
 app.config.update(
@@ -568,6 +622,51 @@ def delete_historial_api(message_id):
     if not borrar_mensaje(message_id, email):
         return jsonify(success=False, message="Mensaje inexistente"), 404
     return jsonify(success=True)
+
+
+@app.get("/api/practica/logros")
+def get_practice_achievements():
+    email = session.get("user_email")
+    if not email:
+        return jsonify(success=False, message="Sesión expirada"), 401
+    return jsonify(_progreso_practica(email))
+
+
+@app.post("/api/practica/acierto")
+def record_practice_success():
+    email = session.get("user_email")
+    if not email:
+        return jsonify(success=False, message="Sesión expirada"), 401
+
+    data = request.get_json(silent=True) or {}
+    raw_label = data.get("sena")
+    if not isinstance(raw_label, str):
+        return jsonify(success=False, message="Seña inválida"), 400
+    label = next((str(item) for item in etiquetas if _normalizar_nombre_sena(item) == _normalizar_nombre_sena(raw_label)), None)
+    if not label:
+        return jsonify(success=False, message="Seña inválida"), 400
+
+    hoy = datetime.now(ARGENTINA_TZ).date()
+    registro = PracticeSign.query.filter_by(email=email, practice_date=hoy, sign_label=label).first()
+    progreso_antes = _progreso_practica(email)
+    if not registro:
+        try:
+            db.session.add(PracticeSign(email=email, practice_date=hoy, sign_label=label))
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+        except SQLAlchemyError:
+            db.session.rollback()
+            app.logger.exception("No se pudo guardar el progreso de práctica para %s", email)
+            return jsonify(success=False, message="No se pudo guardar el progreso"), 500
+
+    progreso = _progreso_practica(email)
+    ya_desbloqueados = {item["id"] for item in progreso_antes["achievements"] if item["unlocked"]}
+    progreso["newly_unlocked"] = [
+        item for item in progreso["achievements"]
+        if item["unlocked"] and item["id"] not in ya_desbloqueados
+    ]
+    return jsonify(progreso)
 
 @app.get("/health")
 def health():
